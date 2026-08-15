@@ -1,0 +1,21 @@
+AeroMC Server Panel
+Copyright (c) 2026 The Aero Group. All rights reserved.
+
+This software is provided for installation and use by authorized recipients.
+No right to redistribute, sell, sublicense, modify, or use the source code is
+granted except by separate written permission from the copyright holder.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR ITS USE.
+
+AeroMC Server Panel is an independent project. It is not affiliated with,
+endorsed by, or sponsored by Mojang Studios, Microsoft, Aternos, Exaroton,
+Modrinth, PaperMC, Fabric, Forge, NeoForge, Spigot, Bukkit, or Purpur.
+Minecraft is a trademark of Microsoft Corporation.
+
+Third-party components remain subject to their own licenses. See
+THIRD-PARTY-NOTICES.md included with the project.
+

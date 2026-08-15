@@ -1,0 +1,77 @@
+name: Cross-platform release packages
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux (.deb)
+    # Older build baseline keeps the .deb compatible with more Ubuntu/Debian systems.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Install Linux packaging tools
+        run: sudo apt-get update && sudo apt-get install -y fakeroot
+      - name: Build and package
+        run: ./scripts/package-linux.sh
+      - name: Run offline smoke tests
+        run: ./scripts/smoke-test.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: AeroMC-Linux
+          path: release/linux/*
+          if-no-files-found: error
+
+  windows:
+    name: Windows (.exe)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Ensure WiX Toolset 3
+        shell: pwsh
+        run: |
+          if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue)) {
+            choco install wixtoolset --version=3.14.1 -y
+          }
+      - name: Build and package
+        shell: pwsh
+        run: ./scripts/package-windows.ps1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: AeroMC-Windows
+          path: release/windows/*
+          if-no-files-found: error
+
+  macos:
+    name: macOS (.dmg)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Build and package
+        run: ./scripts/package-macos.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: AeroMC-macOS
+          path: release/macos/*
+          if-no-files-found: error

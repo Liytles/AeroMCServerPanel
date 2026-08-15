@@ -1,0 +1,7 @@
+/target/
+/release/
+/work/classes/
+*.log
+.idea/
+.vscode/
+
