@@ -50,4 +50,5 @@ $Installer = Get-ChildItem -Path $OutputDir -Filter "*.exe" | Select-Object -Fir
 if (-not $Installer) { throw "Windows kurulum dosyası bulunamadı." }
 $Hash = (Get-FileHash -Algorithm SHA256 $Installer.FullName).Hash.ToLowerInvariant()
 "$Hash  $($Installer.Name)" | Set-Content -Encoding ascii (Join-Path $OutputDir "SHA256SUMS.txt")
+"$Hash  $($Installer.Name)" | Set-Content -Encoding ascii (Join-Path $OutputDir "$($Installer.Name).sha256")
 Write-Host "Windows paketi: $OutputDir"
