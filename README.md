@@ -129,10 +129,6 @@ Canlı Harita'ya ihtiyaç yoksa **NextGen → Dil & Görünüm → Performans Ö
 
 Gereksinimler: Java 17 ve Maven.
 
-```bash
-cd /home/hasan/Documents/Codex/2026-08-15/me/AeroMCServerPanel
-mvn javafx:run
-```
 
 İlk açılışta **Dosya Seç** ile sunucunun `server.jar`, Paper veya Fabric sunucu JAR dosyasını seç. Panel JAR'ın bulunduğu klasörü sunucu klasörü olarak kullanır.
 
