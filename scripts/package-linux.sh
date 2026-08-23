@@ -35,6 +35,6 @@ jpackage \
   --linux-app-category Game \
   --linux-shortcut
 
-(cd "$OUTPUT_DIR" && sha256sum *.deb > SHA256SUMS.txt)
+(cd "$OUTPUT_DIR" && sha256sum *.deb > SHA256SUMS.txt && for PACKAGE in *.deb; do sha256sum "$PACKAGE" > "$PACKAGE.sha256"; done)
 
 echo "Linux paketi: $OUTPUT_DIR"
