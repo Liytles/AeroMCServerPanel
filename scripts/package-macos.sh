@@ -41,6 +41,6 @@ jpackage \
   --mac-package-identifier com.aerogroup.aeromc \
   --mac-package-name AeroMC
 
-(cd "$OUTPUT_DIR" && shasum -a 256 *.dmg > SHA256SUMS.txt)
+(cd "$OUTPUT_DIR" && shasum -a 256 *.dmg > SHA256SUMS.txt && for PACKAGE in *.dmg; do shasum -a 256 "$PACKAGE" > "$PACKAGE.sha256"; done)
 
 echo "macOS package: $OUTPUT_DIR"
