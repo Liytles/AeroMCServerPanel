@@ -153,8 +153,8 @@ Canlı Harita'ya ihtiyaç yoksa **Ayarlar → Performans Özellikleri** bölüm�
 Gereksinimler: Java 17 ve Maven.
 
 ```bash
-cd /home/hasan/Documents/Codex/2026-08-15/me/AeroMCServerPanel
-mvn javafx:run
+
+
 ```
 
 İlk açılışta **Dosya Seç** ile sunucunun `server.jar`, Paper veya Fabric sunucu JAR dosyasını seç. Panel JAR'ın bulunduğu klasörü sunucu klasörü olarak kullanır.
@@ -169,7 +169,7 @@ Yayın paketleri kendi Java çalışma ortamını içerir; uygulamayı kullanaca
 - **Ubuntu/Debian Linux:** `aeromc_3.0.1-1_amd64.deb` dosyasına çift tıkla veya paket yöneticisiyle kur.
 - **macOS:** `AeroMC-3.0.1.dmg` dosyasını aç ve AeroMC'yi Applications klasörüne taşı.
 
-İlk dağıtımlar imzasızdır. Bu nedenle Windows SmartScreen veya macOS Gatekeeper ilk açılışta yayıncı uyarısı gösterebilir. Herkese açık üretim yayını öncesinde Windows Authenticode sertifikası ile imzalama ve Apple Developer ID ile imzalama/noter onayı yapılmalıdır.
+İlk dağıtımlar imzasızdır. Bu nedenle Windows SmartScreen veya macOS Gatekeeper ilk açılışta yayıncı uyarısı gösterebilir. Herkese açık üretim yayını öncesinde Windows Authenticode sertifikası ile imzalama ve Apple Developer ID ile imzalama/noter onayı yapılmalıdır. Öğrenciyim lan ben nereden bulayim 200 doları. Daha projenin 1 starı bile yok. İsteyen kodları inceleyebilir. **Açık Kaynak Kodların Çalınmasına İzin vermek Değildir.**
 
 Her işletim sistemi paketi kendi işletim sisteminde üretilir. Proje GitHub'a yüklendiğinde `.github/workflows/release-build.yml`, üç sistemi ayrı makinelerde otomatik derleyerek indirilebilir `AeroMC-Windows`, `AeroMC-Linux` ve `AeroMC-macOS` çıktıları oluşturur. GitHub'da **Actions → Cross-platform release packages → Run workflow** yolu izlenir.
 
