@@ -17,7 +17,6 @@ import javafx.util.Duration;
 
 import java.io.*;
 import java.net.URI;
-import java.net.http.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.*;
@@ -32,11 +31,14 @@ public final class ProToolsPane {
     private static final Path DATA = Path.of(System.getProperty("user.home"), ".aeromc-panel");
     private static final Path PLAYER_FILE = DATA.resolve("player-history.properties");
     private static final Path JOB_FILE = DATA.resolve("scheduled-jobs.properties");
+    private static final Path EVENT_FILE = DATA.resolve("event-timeline.log");
+    private static final Path DISCORD_SETTINGS_FILE = DATA.resolve("discord-notifications.properties");
     private static final Set<String> SAFE_FILES = Set.of("server.properties", "eula.txt", "whitelist.json", "ops.json", "banned-players.json", "banned-ips.json");
     private static final Pattern JOIN = Pattern.compile("(?:]: )?([A-Za-z0-9_]{1,16}) joined the game");
     private static final Pattern LEAVE = Pattern.compile("(?:]: )?([A-Za-z0-9_]{1,16}) left the game");
     private static final Pattern ADVANCEMENT = Pattern.compile("(?:]: )?([A-Za-z0-9_]{1,16}) has (?:made the advancement|completed the challenge|reached the goal)");
     private static final Pattern DEATH = Pattern.compile("(?:]: )?([A-Za-z0-9_]{1,16}) (?:died|was |fell |drowned|blew up|burned|hit the ground|starved|suffocated|withered|experienced kinetic energy|went up in flames|tried to swim in lava)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern URL = Pattern.compile("https?://[^\\s]+", Pattern.CASE_INSENSITIVE);
 
     private final ServerManager manager;
     private final ExarotonPane exaroton;
@@ -48,11 +50,13 @@ public final class ProToolsPane {
     private final ObservableList<String> findings = FXCollections.observableArrayList();
     private final ObservableList<String> crashReports = FXCollections.observableArrayList();
     private final ObservableList<String> healthReasons = FXCollections.observableArrayList();
+    private final ObservableList<String> events = FXCollections.observableArrayList();
     private final Deque<String> consoleHistory = new ArrayDeque<>();
     private final ObservableList<PlayerProfile> playerRows = FXCollections.observableArrayList();
     private final Map<String, PlayerProfile> profiles = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     private final Set<String> onlinePlayers = new HashSet<>();
     private final ObservableList<Job> jobs = FXCollections.observableArrayList();
+    private final ComboBox<String> scheduledAction = new ComboBox<>();
     private final Label cpuValue = metric("0%"), memoryValue = metric("0 MB"), uptimeValue = metric("Kapalı"), playerValue = metric("0"), latencyValue = metric("-");
     private final Label healthValue = metric("0 / 100"), healthState = new Label("Sunucu kapalı"), crisisState = new Label("Kriz Modu beklemede");
     private final ProgressBar healthProgress = new ProgressBar(0);
@@ -70,11 +74,19 @@ public final class ProToolsPane {
     private final Spinner<Integer> memoryLimit = new Spinner<>(256, 65536, 4096, 256);
     private final PasswordField webhook = new PasswordField();
     private final CheckBox discordEnabled = new CheckBox("Discord bildirimleri açık");
+    private final CheckBox discordStatus = new CheckBox("Açılma / kapanma"), discordCrash = new CheckBox("Çökme ve kritik hata"), discordPlayers = new CheckBox("Oyuncu girişleri"), discordPerformance = new CheckBox("RAM ve Kriz Modu"), discordMaintenance = new CheckBox("Bakım ve yedek"), discordAutomation = new CheckBox("Zamanlanmış görevler"), discordMentionCritical = new CheckBox("Kritik olayda rolü etiketle");
+    private final TextField discordName = new TextField("AeroMC"), discordRoleId = new TextField();
+    private final Label discordState = new Label("Discord webhook bağlantısı bekleniyor");
+    private volatile String automaticDiscordWebhook;
+    private boolean discordViewBuilt, discordVaultLoading;
+    private final DiscordWebhookClient discordClient = new DiscordWebhookClient();
+    private final Button discordLoadSaved = button("Kayıtlı Webhook'u Aç", "secondary"), discordDeleteSaved = button("Kaydı Sil", "danger");
+    private final Label automationScope = new Label("Yerel JAR görevleri"), maintenanceNote = new Label();
+    private final Button openExarotonAutomationButton = button("Exaroton Otomasyon Merkezini Aç", "primary");
     private final CheckBox automaticCrisis = new CheckBox("Kriz Modunu otomatik tetikle");
     private final Spinner<Double> crisisTps;
     private final Spinner<Integer> crisisRam;
     private final VBox achievementPreview = new VBox(10);
-    private final HttpClient http = HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(8)).build();
     private long lastPid = -1, lastCpuNanos = -1, lastSampleNanos = -1, sampleIndex;
     private int currentMemoryMb;
     private boolean memoryWarned, autoRestarting;
@@ -87,13 +99,16 @@ public final class ProToolsPane {
     private ExarotonPane.ProSnapshot remoteSnapshot;
     private String lastRemoteStatus;
     private boolean remoteMetricsReceived;
+    private String latestSparkReport;
+    private VBox localAutomationCard;
+    private final Runnable openExarotonAutomation;
 
-    public ProToolsPane(ServerManager manager, ExarotonPane exaroton, PanelConfig config, HostServices hostServices) {
-        this.manager = manager; this.exaroton = exaroton; this.config = config; this.hostServices = hostServices;
+    public ProToolsPane(ServerManager manager, ExarotonPane exaroton, PanelConfig config, HostServices hostServices, Runnable openExarotonAutomation) {
+        this.manager = manager; this.exaroton = exaroton; this.config = config; this.hostServices = hostServices; this.openExarotonAutomation = openExarotonAutomation;
         this.modCenterPane = new ModCenterPane(manager, exaroton, config, hostServices);
         crisisTps = new Spinner<>(10.0, 19.5, Math.max(10.0, Math.min(19.5, config.getCrisisTpsThreshold())), 0.5);
         crisisRam = new Spinner<>(70, 99, Math.max(70, Math.min(99, (int) config.getCrisisRamThreshold())), 1);
-        loadPlayers(); loadJobs(); metrics.setCycleCount(Animation.INDEFINITE); scheduler.setCycleCount(Animation.INDEFINITE);
+        loadPlayers(); loadJobs(); loadEvents(); loadDiscordPreferences(); metrics.setCycleCount(Animation.INDEFINITE); scheduler.setCycleCount(Animation.INDEFINITE);
         exaroton.addProConsoleListener(this::onRemoteConsole);
         exaroton.addProSnapshotListener(snapshot -> Platform.runLater(() -> acceptRemoteSnapshot(snapshot)));
         exaroton.addProMetricsListener(metrics -> Platform.runLater(() -> acceptRemoteMetrics(metrics)));
@@ -105,28 +120,28 @@ public final class ProToolsPane {
     }
 
     public Node buildView() {
-        Node health = insightsView(), modCenter = modCenterPane.buildView(), files = filesView(), content = contentView(), worlds = worldsView(), automation = automationView(), players = playersView();
+        Node health = scrollable(insightsView()), modCenter = scrollable(modCenterPane.buildView()), files = scrollable(filesView()), content = scrollable(contentView()), worlds = scrollable(worldsView()), automation = scrollable(automationView()), players = scrollable(playersView()), timeline = scrollable(timelineView());
         StackPane center = new StackPane(health);
         ToggleGroup navigation = new ToggleGroup();
         VBox menu = new VBox(7);
         menu.getStyleClass().add("control-menu");
-        for (Object[] item : new Object[][]{{"Sunucu Sağlığı", health}, {"Tek Tık Mod Merkezi", modCenter}, {"Dosyalar", files}, {"Eklenti & Modlar", content}, {"Dünyalar", worlds}, {"Otomasyon", automation}, {"Başarı Kartları", players}}) {
-            ToggleButton button = new ToggleButton((String) item[0]); button.setToggleGroup(navigation); button.setMaxWidth(Double.MAX_VALUE); button.getStyleClass().add("control-menu-button");
+        for (Object[] item : new Object[][]{{"Sunucu Sağlığı", health}, {"Olay Zaman Çizelgesi", timeline}, {"Tek Tık Mod Merkezi", modCenter}, {"Dosyalar", files}, {"Eklenti & Modlar", content}, {"Dünyalar", worlds}, {"Görevler & Bildirimler", automation}, {"Başarı Kartları", players}}) {
+            ToggleButton button = new ToggleButton((String) item[0]); button.setToggleGroup(navigation); button.setMaxWidth(Double.MAX_VALUE); button.setWrapText(true); button.setTooltip(new Tooltip((String) item[0])); button.getStyleClass().add("control-menu-button");
             Node view = (Node) item[1]; button.setOnAction(event -> { center.getChildren().setAll(view); if (view == files) loadSelectedFile(); if (view == content) refreshContent(); if (view == worlds) refreshWorlds(); }); menu.getChildren().add(button);
         }
         ((ToggleButton) menu.getChildren().get(0)).setSelected(true);
         BorderPane workspace = new BorderPane(); workspace.setLeft(menu); workspace.setCenter(center); workspace.getStyleClass().add("control-workspace");
-        provider.getSelectionModel().selectFirst(); provider.setOnAction(event -> { resetProcessSample(); recentCrashes = overloadWarnings = overloadBurst = 0; synchronized (consoleHistory) { consoleHistory.clear(); } updateProviderState(); remoteMetricsReceived = false; cpuSeries.getData().clear(); memorySeries.getData().clear(); loadSelectedFile(); refreshContent(); refreshWorlds(); });
+        provider.getSelectionModel().selectFirst(); provider.setOnAction(event -> { resetProcessSample(); recentCrashes = overloadWarnings = overloadBurst = 0; synchronized (consoleHistory) { consoleHistory.clear(); } updateProviderState(); updateAutomationProviderUi(); remoteMetricsReceived = false; cpuSeries.getData().clear(); memorySeries.getData().clear(); loadSelectedFile(); refreshContent(); refreshWorlds(); });
         providerState.getStyleClass().add("muted"); Region spacer = new Region(); HBox.setHgrow(spacer, Priority.ALWAYS);
         Label title = new Label("AKTİF SUNUCU"); title.getStyleClass().add("section-title");
-        HBox providerBar = new HBox(9, title, provider, providerState, spacer, new Label("Kontrol Merkezi")); providerBar.setAlignment(Pos.CENTER_LEFT); providerBar.getStyleClass().add("pro-provider-bar"); updateProviderState();
+        HBox providerBar = new HBox(9, title, provider, providerState, spacer, new Label("Kontrol Merkezi")); providerBar.setAlignment(Pos.CENTER_LEFT); providerBar.getStyleClass().add("pro-provider-bar"); updateProviderState(); updateAutomationProviderUi();
         VBox shell = new VBox(providerBar, workspace); VBox.setVgrow(workspace, Priority.ALWAYS);
         metrics.play(); scheduler.play(); return shell;
     }
 
     private Node insightsView() {
         healthProgress.setMaxWidth(Double.MAX_VALUE); healthProgress.getStyleClass().add("health-progress"); healthState.getStyleClass().add("health-state");
-        ListView<String> reasons = new ListView<>(healthReasons); reasons.setPrefHeight(86); reasons.setPlaceholder(new Label("Canlı ölçüm bekleniyor"));
+        ListView<String> reasons = new ListView<>(healthReasons); reasons.setPrefHeight(86); reasons.setMinHeight(86); reasons.setPlaceholder(new Label("Canlı ölçüm bekleniyor"));
         VBox score = card("SUNUCU SAĞLIK PUANI", healthValue, healthState, healthProgress, reasons); score.getStyleClass().add("health-card");
 
         automaticCrisis.setSelected(config.isCrisisModeEnabled()); crisisTps.setEditable(true); crisisRam.setEditable(true); crisisState.getStyleClass().add("crisis-state");
@@ -134,8 +149,8 @@ public final class ProToolsPane {
         Button startCrisis = button("Şimdi Etkinleştir", "danger"), stopCrisis = button("Krizden Çık", "secondary");
         startCrisis.setOnAction(event -> enterCrisis("Yönetici tarafından etkinleştirildi")); stopCrisis.setOnAction(event -> exitCrisis(true));
         HBox thresholds = new HBox(8, new Label("TPS altı"), crisisTps, new Label("RAM %"), crisisRam); thresholds.setAlignment(Pos.CENTER_LEFT);
-        Label crisisNote = new Label("Kriz sırasında otomatik görevler durur, randomTickSpeed azaltılır ve güvenli performans ayarları hazırlanır. Sunucu izinsiz yeniden başlatılmaz."); crisisNote.setWrapText(true); crisisNote.getStyleClass().add("muted");
-        VBox crisis = card("KRİZ MODU", automaticCrisis, thresholds, new HBox(8, startCrisis, stopCrisis), crisisState, crisisNote); crisis.getStyleClass().add("crisis-card");
+        Label crisisNote = new Label("Kriz sırasında otomatik görevler durur, randomTickSpeed azaltılır ve güvenli performans ayarları hazırlanır. Sunucu izinsiz yeniden başlatılmaz."); crisisNote.setWrapText(true); crisisNote.setMinHeight(38); crisisNote.getStyleClass().add("muted");
+        VBox crisis = card("KRİZ MODU", automaticCrisis, thresholds, new HBox(8, startCrisis, stopCrisis), crisisState, crisisNote); crisis.setMinHeight(225); crisis.getStyleClass().add("crisis-card"); score.setMinHeight(225);
         HBox healthRow = new HBox(14, score, crisis); HBox.setHgrow(score, Priority.ALWAYS); HBox.setHgrow(crisis, Priority.ALWAYS); score.setMaxWidth(Double.MAX_VALUE); crisis.setMaxWidth(Double.MAX_VALUE);
 
         HBox cards = new HBox(12, metricCard("CPU / TPS", cpuValue), metricCard("SUNUCU RAM", memoryValue), metricCard("GECİKME", latencyValue), metricCard("ÇALIŞMA / DURUM", uptimeValue), metricCard("OYUNCULAR", playerValue));
@@ -147,8 +162,26 @@ public final class ProToolsPane {
         Button clear = button("Analizi Temizle", "secondary"); clear.setOnAction(event -> { findings.clear(); crashReports.clear(); });
         Tab warnings = tab("Canlı Uyarılar", list), crashes = tab("Çökme Doktoru", doctor); TabPane analysisTabs = new TabPane(warnings, crashes); analysisTabs.getStyleClass().add("diagnostic-tabs"); VBox.setVgrow(analysisTabs, Priority.ALWAYS);
         VBox analyzer = card("AKILLI ÇÖKME DOKTORU", new Label("Konsoldaki belirtileri, olası şüpheliyi ve çözüm sırasını açıklar."), analysisTabs, clear); VBox.setVgrow(analyzer, Priority.ALWAYS);
-        VBox chartCard = card("CANLI PERFORMANS", chart); chart.setPrefHeight(190); HBox body = new HBox(14, chartCard, analyzer); HBox.setHgrow(chartCard, Priority.ALWAYS); HBox.setHgrow(analyzer, Priority.ALWAYS);
-        VBox page = page(healthRow, cards, body); VBox.setVgrow(body, Priority.ALWAYS); return page;
+        VBox chartCard = card("CANLI PERFORMANS", chart); chart.setMinHeight(320); chart.setPrefHeight(430); chart.setMaxHeight(Double.MAX_VALUE); VBox.setVgrow(chart, Priority.ALWAYS); VBox.setVgrow(chartCard, Priority.ALWAYS); HBox body = new HBox(14, chartCard, analyzer); HBox.setHgrow(chartCard, Priority.ALWAYS); HBox.setHgrow(analyzer, Priority.ALWAYS);
+        VBox profiler = profilerView();
+        VBox page = page(healthRow, cards, profiler, body); VBox.setVgrow(healthRow, Priority.NEVER); VBox.setVgrow(cards, Priority.NEVER); VBox.setVgrow(profiler, Priority.NEVER); VBox.setVgrow(body, Priority.ALWAYS); return page;
+    }
+
+    private VBox profilerView() {
+        Spinner<Integer> seconds = new Spinner<>(60, 900, 300, 30); seconds.setEditable(true);
+        Button profile = button("SPARK PROFİLİ BAŞLAT", "primary"), health = button("SPARK SAĞLIK RAPORU", "secondary"), open = button("Son Raporu Aç", "secondary");
+        profile.setOnAction(event -> startSparkProfile(seconds.getValue())); health.setOnAction(event -> requestSparkHealthReport()); open.setOnAction(event -> openSparkReport());
+        Label note = new Label("Paper 1.21+ sunucularında yerleşik spark profilini başlatır. Sorun yaşanırken çalıştır; konsola gelen rapor bağlantısı burada saklanır."); note.setWrapText(true); note.getStyleClass().add("muted");
+        return card("LAG AVCISI", new HBox(8, new Label("Süre (sn)"), seconds, profile, health, open), note);
+    }
+
+    private Node timelineView() {
+        ListView<String> list = new ListView<>(events); list.setPlaceholder(new Label("Henüz kaydedilmiş olay yok")); VBox.setVgrow(list, Priority.ALWAYS);
+        Button copy = button("Son Olayları Kopyala", "secondary"), clear = button("Zaman Çizelgesini Temizle", "danger");
+        copy.setOnAction(event -> { javafx.scene.input.ClipboardContent content = new javafx.scene.input.ClipboardContent(); content.putString(String.join(System.lineSeparator(), events)); javafx.scene.input.Clipboard.getSystemClipboard().setContent(content); });
+        clear.setOnAction(event -> { if (confirm("Tüm olay zaman çizelgesi silinsin mi?")) { events.clear(); saveEvents(); } });
+        Label note = new Label("Başlatma, kapanma/çökme, oyuncu, yedek, kriz modu ve Spark profil olayları bu bilgisayarda saklanır."); note.getStyleClass().add("muted");
+        return page(card("SUNUCU OLAY ZAMAN ÇİZELGESİ", note, list, new HBox(8, copy, clear)));
     }
 
     private Node filesView() {
@@ -183,20 +216,40 @@ public final class ProToolsPane {
     }
 
     private Node automationView() {
-        ComboBox<String> action = new ComboBox<>(FXCollections.observableArrayList("Yedek al", "Yeniden başlat", "Sunucuyu durdur", "Duyuru gönder")); action.getSelectionModel().selectFirst();
+        scheduledAction.getItems().setAll("Yedek al", "Yeniden başlat", "Sunucuyu durdur", "Duyuru gönder"); scheduledAction.getSelectionModel().selectFirst();
         Spinner<Integer> minutes = new Spinner<>(1, 10080, 30); TextField message = new TextField(); message.setPromptText("Duyuru metni");
-        Button add = button("Görevi Planla", "primary"); add.setOnAction(event -> addJob(action.getValue(), minutes.getValue(), message.getText().trim()));
+        Button add = button("Görevi Planla", "primary"); add.setOnAction(event -> addJob(scheduledAction.getValue(), minutes.getValue(), message.getText().trim()));
         ListView<Job> jobList = new ListView<>(jobs); Button remove = button("Seçili Görevi Sil", "danger"); remove.setOnAction(event -> { Job selected = jobList.getSelectionModel().getSelectedItem(); if (selected != null) { jobs.remove(selected); saveJobs(); } });
-        HBox jobRow = new HBox(8, action, new Label("dakika sonra"), minutes, message, add); HBox.setHgrow(message, Priority.ALWAYS); VBox.setVgrow(jobList, Priority.ALWAYS);
-        VBox jobsCard = card("GÖREV ZAMANLAYICISI", jobRow, jobList, remove); VBox.setVgrow(jobsCard, Priority.ALWAYS);
+        message.setPrefWidth(360); FlowPane jobRow = new FlowPane(8, 8, scheduledAction, new Label("dakika sonra"), minutes, message, add); jobRow.setAlignment(Pos.CENTER_LEFT); jobList.setPrefHeight(220); jobList.setMinHeight(130); jobList.setMaxHeight(280);
+        Label taskNote = new Label("Buradaki görevler tek seferliktir. Sürekli Exaroton saat, kredi, çökme ve oyuncusuz-durdurma kuralları Exaroton Otomasyon Merkezi'nde yönetilir."); taskNote.setWrapText(true); taskNote.getStyleClass().add("muted");
+        VBox jobsCard = card("TEK SEFERLİK GÖREV ZAMANLAYICISI", jobRow, taskNote, jobList, remove);
 
-        memoryLimit.setEditable(true); HBox rules = new HBox(14, restartOnCrash, notifyHighMemory, new Label("RAM sınırı (MB)"), memoryLimit); rules.setAlignment(Pos.CENTER_LEFT);
-        webhook.setPromptText("Discord webhook URL (yalnızca bu oturumda tutulur)"); HBox.setHgrow(webhook, Priority.ALWAYS); Button test = button("Test Mesajı", "secondary"); test.setOnAction(event -> sendDiscord("AeroMC bağlantısı başarılı 🎮"));
-        HBox discord = new HBox(8, discordEnabled, webhook, test); discord.setAlignment(Pos.CENTER_LEFT);
+        automationScope.getStyleClass().add("metric"); automationScope.setWrapText(true); openExarotonAutomationButton.setOnAction(event -> openExarotonAutomation.run());
+        VBox scope = card("OTOMASYON KAPSAMI", automationScope, openExarotonAutomationButton);
+        memoryLimit.setEditable(true); restartOnCrash.setText("Yerel sunucu çökerse otomatik yeniden başlat"); FlowPane rules = new FlowPane(14, 9, restartOnCrash, notifyHighMemory, new Label("RAM sınırı (MB)"), memoryLimit); rules.setAlignment(Pos.CENTER_LEFT);
+        Label localNote = new Label("Bu korumalar yalnızca bilgisayarındaki Yerel JAR sunucusuna uygulanır; Exaroton kurallarıyla çakışmaz."); localNote.setWrapText(true); localNote.getStyleClass().add("muted");
+        localAutomationCard = card("YEREL SUNUCU KORUMASI", rules, localNote);
+        webhook.setPromptText("https://discord.com/api/webhooks/..."); webhook.setPrefWidth(560); SecretFieldGuard.protect(webhook); discordName.setPromptText("Webhook görünen adı"); discordName.setPrefWidth(180); discordRoleId.setPromptText("Discord rol kimliği"); discordRoleId.setPrefWidth(210); discordState.getStyleClass().add("muted");
+        discordRoleId.setDisable(!discordMentionCritical.isSelected()); discordMentionCritical.setOnAction(event -> discordRoleId.setDisable(!discordMentionCritical.isSelected()));
+        Button test = button("Test Mesajı", "secondary"), saveDiscord = button("Ayarları Kaydet", "primary"), storeWebhook = button("Şifreli Sakla", "secondary");
+        test.setOnAction(event -> sendDiscordTest()); saveDiscord.setOnAction(event -> saveDiscordPreferences(true)); storeWebhook.setOnAction(event -> storeDiscordWebhook()); discordLoadSaved.setOnAction(event -> loadDiscordWebhook()); discordDeleteSaved.setOnAction(event -> deleteDiscordWebhook()); discordLoadSaved.setDisable(!DiscordWebhookStore.exists()); discordDeleteSaved.setDisable(!DiscordWebhookStore.exists());
+        FlowPane connection = new FlowPane(8, 8, discordEnabled, webhook, test, storeWebhook, discordLoadSaved, discordDeleteSaved); connection.setAlignment(Pos.CENTER_LEFT);
+        FlowPane eventFilters = new FlowPane(14, 9, discordStatus, discordCrash, discordPlayers, discordPerformance, discordMaintenance, discordAutomation);
+        FlowPane identity = new FlowPane(9, 9, new Label("Görünen ad"), discordName, discordMentionCritical, discordRoleId, saveDiscord); identity.setAlignment(Pos.CENTER_LEFT);
+        Label discordNote = new Label("Bildirimler renkli embed olarak gönderilir. Oyuncu ve konsol metinlerinin rol veya @everyone etiketi oluşturması engellenir. Webhook yalnızca ana parolayla şifrelenerek kalıcı saklanabilir."); discordNote.setWrapText(true); discordNote.getStyleClass().add("muted");
+        VBox notifications = card("DISCORD BİLDİRİM MERKEZİ", connection, eventFilters, identity, discordState, discordNote); discordViewBuilt = true; updateDiscordVaultPrompt(); if (config.isAutomaticCredentialVaultEnabled()) Platform.runLater(this::loadAutomaticDiscordWebhook);
         Button maintenance = button("BAKIM MODUNU BAŞLAT", "danger"); maintenance.setOnAction(event -> maintenanceMode());
-        Label maintenanceNote = new Label("Whitelist açılır, oyuncular bilgilendirilir, dünya kaydedilir, yedek alınır ve sunucu güvenli şekilde kapatılır."); maintenanceNote.getStyleClass().add("muted");
-        VBox controls = card("OLAY KURALLARI & DISCORD", rules, discord, maintenance, maintenanceNote);
-        VBox page = page(jobsCard, controls); VBox.setVgrow(jobsCard, Priority.ALWAYS); return page;
+        maintenanceNote.setWrapText(true); maintenanceNote.getStyleClass().add("muted"); VBox maintenanceCard = card("BAKIM MODU", maintenance, maintenanceNote);
+        VBox page = new VBox(14, scope, jobsCard, localAutomationCard, notifications, maintenanceCard); page.setPadding(new Insets(18)); updateAutomationProviderUi(); return page;
+    }
+
+    private void updateAutomationProviderUi() {
+        if (localAutomationCard == null) return; boolean remote = isRemote();
+        automationScope.setText(remote ? "Exaroton seçili • Sürekli kurallar Sunucular → Exaroton → Otomasyon Merkezi'nde tek yerden yönetilir." : "Yerel JAR seçili • Yerel görevler ve korumalar bu sayfadan yönetilir.");
+        openExarotonAutomationButton.setManaged(remote); openExarotonAutomationButton.setVisible(remote); localAutomationCard.setManaged(!remote); localAutomationCard.setVisible(!remote);
+        String selected = scheduledAction.getValue(); if (remote) scheduledAction.getItems().setAll("Yeniden başlat", "Sunucuyu durdur", "Duyuru gönder"); else scheduledAction.getItems().setAll("Yedek al", "Yeniden başlat", "Sunucuyu durdur", "Duyuru gönder");
+        if (selected != null && scheduledAction.getItems().contains(selected)) scheduledAction.setValue(selected); else scheduledAction.getSelectionModel().selectFirst();
+        maintenanceNote.setText(remote ? "Exaroton sunucusunda whitelist açılır, oyuncular bilgilendirilir ve sunucu kapatılır. Exaroton API yedek oluşturmayı desteklemez." : "Yerel sunucuda whitelist açılır, oyuncular bilgilendirilir, dünya kaydedilir, yedek alınır ve sunucu güvenli şekilde kapatılır.");
     }
 
     private Node playersView() {
@@ -222,6 +275,7 @@ public final class ProToolsPane {
     }
     private void analyzeConsole(String line) {
         synchronized (consoleHistory) { consoleHistory.addLast(line); while (consoleHistory.size() > 300) consoleHistory.removeFirst(); }
+        captureSparkReport(line);
         Matcher joined = JOIN.matcher(line), left = LEAVE.matcher(line), advancement = ADVANCEMENT.matcher(line), death = DEATH.matcher(line);
         if (joined.find()) Platform.runLater(() -> markJoined(joined.group(1)));
         if (left.find()) Platform.runLater(() -> markLeft(left.group(1)));
@@ -235,19 +289,55 @@ public final class ProToolsPane {
         else if (lower.contains("can't keep up") || lower.contains("server is overloaded") || lower.contains("a single server tick took")) { explanation = "PERFORMANS UYARISI: Sunucu tick'leri geride kalıyor. Görüş mesafesini azalt, RAM/CPU kullanımını ve ağır eklentileri kontrol et."; Platform.runLater(() -> { overloadWarnings++; overloadBurst++; updateHealthAndCrisis(); }); }
         else if (lower.contains("exception") && !lower.contains("connection")) explanation = "JAVA HATASI: Ayrıntı için bu satırın hemen altındaki 'Caused by' bölümünü kontrol et: " + trim(line, 170);
         else if (lower.contains("crash report")) explanation = "ÇÖKME RAPORU: Sunucu bir crash-report oluşturdu. En son eklenen mod/eklenti ilk şüphelidir.";
-        if (explanation != null) { String value = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss")) + "  " + explanation; Platform.runLater(() -> { if (findings.isEmpty() || !findings.get(0).endsWith(value.substring(10))) findings.add(0, value); while (findings.size() > 100) findings.remove(findings.size() - 1); }); }
+        if (explanation != null) { String alertText = explanation, value = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss")) + "  " + alertText; Platform.runLater(() -> { if (findings.isEmpty() || !findings.get(0).endsWith(value.substring(10))) { findings.add(0, value); recordEvent("Uyarı", alertText); } while (findings.size() > 100) findings.remove(findings.size() - 1); }); }
+    }
+
+    private void startSparkProfile(int seconds) {
+        if (!serverOnline) { showError("Lag Avcısı için seçili sunucu online olmalı."); return; }
+        String command = "spark profiler start --timeout " + seconds;
+        try {
+            if (isRemote()) runRemoteAction("Spark profilini başlatma", () -> exaroton.executeAdminCommand(command));
+            else manager.command(command);
+            recordEvent("Lag Avcısı", seconds + " saniyelik Spark profili başlatıldı.");
+            info("Lag Avcısı başladı", "Profil, sorun yaşanırken veri toplar. Tamamlanınca konsoldaki rapor bağlantısı otomatik yakalanır.");
+        } catch (Exception error) { showError("Spark profili başlatılamadı: " + rootMessage(error)); }
+    }
+
+    private void requestSparkHealthReport() {
+        if (!serverOnline) { showError("Spark sağlık raporu için seçili sunucu online olmalı."); return; }
+        try {
+            if (isRemote()) runRemoteAction("Spark sağlık raporu", () -> exaroton.executeAdminCommand("spark healthreport"));
+            else manager.command("spark healthreport");
+            recordEvent("Lag Avcısı", "Spark sağlık raporu istendi.");
+        } catch (Exception error) { showError("Spark sağlık raporu alınamadı: " + rootMessage(error)); }
+    }
+
+    private void captureSparkReport(String line) {
+        if (!line.toLowerCase(Locale.ROOT).contains("spark")) return;
+        Matcher match = URL.matcher(line);
+        if (!match.find()) return;
+        latestSparkReport = match.group().replaceAll("[).,]+$", "");
+        recordEvent("Lag Avcısı", "Spark raporu hazırlandı: " + latestSparkReport);
+        Platform.runLater(() -> findings.add(0, now() + "  LAG AVCISI: Spark raporu hazır. 'Son Raporu Aç' düğmesini kullan."));
+    }
+
+    private void openSparkReport() {
+        if (latestSparkReport == null || latestSparkReport.isBlank()) { showError("Henüz yakalanmış bir Spark raporu yok."); return; }
+        try { hostServices.showDocument(latestSparkReport); } catch (Exception error) { showError("Rapor açılamadı: " + rootMessage(error)); }
     }
 
     public void onState(boolean running, String text) {
         if (isRemote()) return;
         serverOnline = running;
         if (running) autoRestarting = false;
+        recordEvent("Sunucu", text);
         if (!running) for (String name : new HashSet<>(onlinePlayers)) markLeft(name);
         if (!running && text.toLowerCase(Locale.ROOT).contains("çöktü")) {
             recentCrashes++; createCrashDiagnosis(); updateHealthAndCrisis();
-            sendDiscord("⚠️ Yerel Minecraft sunucusu çöktü: " + text);
+            sendDiscord(DiscordNotificationEngine.Type.CRASH, "Yerel sunucu çöktü", text, true);
             if (restartOnCrash.isSelected() && !autoRestarting) { autoRestarting = true; Platform.runLater(() -> findings.add(0, now() + "  OTOMASYON: Çökme sonrası yeniden başlatma tetiklendi.")); restartConfigured(); }
-        } else if (running && text.toLowerCase(Locale.ROOT).contains("online")) { sendDiscord("✅ Yerel Minecraft sunucusu online."); updateHealthAndCrisis(); }
+        } else if (running && text.toLowerCase(Locale.ROOT).contains("online")) { sendDiscord(DiscordNotificationEngine.Type.STATUS, "Sunucu online", "Yerel Minecraft sunucusu oyuncu kabul etmeye hazır.", false); updateHealthAndCrisis(); }
+        else if (!running) sendDiscord(DiscordNotificationEngine.Type.STATUS, "Sunucu kapandı", text, false);
     }
 
     public void onPlayers(List<String> names) {
@@ -256,8 +346,8 @@ public final class ProToolsPane {
     }
     private void acceptPlayers(List<String> names) {
         Set<String> incoming = new HashSet<>(names);
-        for (String name : incoming) if (!onlinePlayers.contains(name)) { markJoined(name); sendDiscord("🟢 " + name + " sunucuya katıldı."); }
-        for (String name : new HashSet<>(onlinePlayers)) if (!incoming.contains(name)) markLeft(name);
+        for (String name : incoming) if (!onlinePlayers.contains(name)) { markJoined(name); recordEvent("Oyuncu", name + " katıldı"); sendDiscord(DiscordNotificationEngine.Type.PLAYER, "Oyuncu katıldı", name + " sunucuya katıldı.", false); }
+        for (String name : new HashSet<>(onlinePlayers)) if (!incoming.contains(name)) { markLeft(name); recordEvent("Oyuncu", name + " ayrıldı"); }
         onlinePlayers.clear(); onlinePlayers.addAll(incoming); playerValue.setText(Integer.toString(incoming.size())); refreshPlayerRows();
     }
 
@@ -276,11 +366,11 @@ public final class ProToolsPane {
         uptimeValue.setText(snapshot.status());
         acceptPlayers(snapshot.playerNames());
         String lower = snapshot.status().toLowerCase(Locale.ROOT);
-        if (lastRemoteStatus != null && !lastRemoteStatus.equals(snapshot.status()) && snapshot.online()) sendDiscord("✅ " + snapshot.name() + " Exaroton sunucusu online.");
+        if (lastRemoteStatus != null && !lastRemoteStatus.equals(snapshot.status()) && snapshot.online()) sendDiscord(DiscordNotificationEngine.Type.STATUS, "Exaroton sunucusu online", snapshot.name() + " oyuncu kabul etmeye hazır.", false);
+        else if (lastRemoteStatus != null && !lastRemoteStatus.equals(snapshot.status()) && !snapshot.online() && !snapshot.status().toLowerCase(Locale.ROOT).contains("crash")) sendDiscord(DiscordNotificationEngine.Type.STATUS, "Exaroton durum değişikliği", snapshot.name() + " • " + snapshot.status(), false);
         if (lower.contains("crash") && !lower.equals(String.valueOf(lastRemoteStatus).toLowerCase(Locale.ROOT))) {
             recentCrashes++; createCrashDiagnosis();
-            sendDiscord("⚠️ " + snapshot.name() + " Exaroton sunucusu çöktü.");
-            if (restartOnCrash.isSelected() && !autoRestarting) { autoRestarting = true; restartConfigured(); findings.add(0, now() + "  OTOMASYON: Exaroton çökme sonrası yeniden başlatılıyor."); }
+            sendDiscord(DiscordNotificationEngine.Type.CRASH, "Exaroton sunucusu çöktü", snapshot.name() + " çökmüş duruma geçti.", true);
         }
         if (snapshot.online()) { autoRestarting = false; if (sampleIndex % 5 == 0) probeLatency(snapshot.address()); } lastRemoteStatus = snapshot.status(); updateHealthAndCrisis();
     }
@@ -305,7 +395,7 @@ public final class ProToolsPane {
         Instant start = handle.get().info().startInstant().orElse(Instant.now()); uptimeValue.setText(durationText(java.time.Duration.between(start, Instant.now()).toSeconds()));
         addPoint(cpuSeries, sampleIndex, percent); if (currentMemoryMb >= 0) addPoint(memorySeries, sampleIndex, currentMemoryMb); sampleIndex++;
         if (sampleIndex % 5 == 0) probeLocalLatency();
-        if (notifyHighMemory.isSelected() && currentMemoryMb >= memoryLimit.getValue() && !memoryWarned) { memoryWarned = true; DesktopNotifier.show("AeroMC RAM uyarısı", "Sunucu " + currentMemoryMb + " MB RAM kullanıyor."); sendDiscord("🟠 Sunucu RAM kullanımı " + currentMemoryMb + " MB seviyesine ulaştı."); }
+        if (notifyHighMemory.isSelected() && currentMemoryMb >= memoryLimit.getValue() && !memoryWarned) { memoryWarned = true; DesktopNotifier.show("AeroMC RAM uyarısı", "Sunucu " + currentMemoryMb + " MB RAM kullanıyor."); sendDiscord(DiscordNotificationEngine.Type.PERFORMANCE, "Yüksek RAM kullanımı", "Sunucu " + currentMemoryMb + " MB RAM kullanıyor.", true); }
         if (currentMemoryMb < memoryLimit.getValue() * .85) memoryWarned = false;
         updateHealthAndCrisis();
     }
@@ -338,9 +428,9 @@ public final class ProToolsPane {
         if (crisisActive) return;
         if (!serverOnline) { showError("Kriz Modu için seçili sunucu online olmalı."); return; }
         crisisActive = true; crisisProvider = provider.getValue(); provider.setDisable(true); unhealthySamples = 0; healthySamples = 0; scheduler.pause(); crisisState.setText("ETKİN • " + reason); crisisState.getStyleClass().add("crisis-active");
-        findings.add(0, now() + "  KRİZ MODU: " + reason + ". Otomatik ağır görevler durduruldu.");
+        findings.add(0, now() + "  KRİZ MODU: " + reason + ". Otomatik ağır görevler durduruldu."); recordEvent("Kriz Modu", "Etkinleştirildi: " + reason);
         Task<Void> task = new Task<>() { protected Void call() throws Exception { applyCrisisSettings(); return null; } };
-        task.setOnSucceeded(event -> { DesktopNotifier.show("AeroMC Kriz Modu", "Sunucuyu rahatlatan güvenli önlemler uygulandı."); sendDiscord("🚨 Kriz Modu etkin: " + reason); });
+        task.setOnSucceeded(event -> { DesktopNotifier.show("AeroMC Kriz Modu", "Sunucuyu rahatlatan güvenli önlemler uygulandı."); sendDiscord(DiscordNotificationEngine.Type.PERFORMANCE, "Kriz Modu etkinleştirildi", reason, true); });
         task.setOnFailed(event -> { findings.add(0, now() + "  KRİZ UYARISI: Bazı önlemler uygulanamadı: " + rootMessage(task.getException())); }); run(task, "crisis-enter");
     }
 
@@ -361,9 +451,9 @@ public final class ProToolsPane {
 
     private void exitCrisis(boolean manual) {
         if (!crisisActive) return;
-        crisisActive = false; provider.setDisable(false); unhealthySamples = healthySamples = 0; scheduler.play(); crisisState.setText(manual ? "Kriz Modu yönetici tarafından kapatıldı" : "Sunucu toparlandı • Kriz Modu kapatıldı"); crisisState.getStyleClass().remove("crisis-active");
+        crisisActive = false; provider.setDisable(false); unhealthySamples = healthySamples = 0; scheduler.play(); crisisState.setText(manual ? "Kriz Modu yönetici tarafından kapatıldı" : "Sunucu toparlandı • Kriz Modu kapatıldı"); crisisState.getStyleClass().remove("crisis-active"); recordEvent("Kriz Modu", manual ? "Yönetici tarafından kapatıldı" : "Sunucu toparlanınca otomatik kapatıldı");
         Task<Void> task = new Task<>() { protected Void call() throws Exception { restoreCrisisSettings(); return null; } };
-        task.setOnSucceeded(event -> { findings.add(0, now() + "  KRİZ MODU: Normal ayarlar geri yüklendi, otomatik görevler devam ediyor."); sendDiscord("✅ Kriz Modu kapandı; sunucu değerleri toparlandı."); });
+        task.setOnSucceeded(event -> { findings.add(0, now() + "  KRİZ MODU: Normal ayarlar geri yüklendi, otomatik görevler devam ediyor."); sendDiscord(DiscordNotificationEngine.Type.PERFORMANCE, "Kriz Modu kapandı", "Sunucu değerleri toparlandı ve normal ayarlar geri yüklendi.", false); });
         task.setOnFailed(event -> findings.add(0, now() + "  KRİZ UYARISI: Ayarlar geri yüklenemedi: " + rootMessage(task.getException()))); run(task, "crisis-exit");
     }
 
@@ -439,7 +529,7 @@ public final class ProToolsPane {
     private boolean isDisabled(Path path) { return path.getFileName().toString().endsWith(".disabled"); }
 
     private void refreshWorlds() { if (isRemote()) { Task<List<String>> task = new Task<>() { protected List<String> call() throws Exception { return exaroton.listRemoteDirectory("/").join(); } }; task.setOnSucceeded(event -> worldList.getItems().setAll(task.getValue().stream().filter(name -> name.endsWith("/")).map(name -> name.substring(0, name.length() - 1)).filter(name -> name.equals("world") || name.endsWith("_nether") || name.endsWith("_the_end")).map(Path::of).toList())); task.setOnFailed(event -> worldList.getItems().clear()); run(task, "exaroton-world-list"); return; } Path folder = manager.getServerFolder(); if (folder == null) { worldList.getItems().clear(); return; } try (var dirs = Files.list(folder)) { worldList.getItems().setAll(dirs.filter(Files::isDirectory).filter(path -> { String n = path.getFileName().toString(); return n.equals("world") || n.endsWith("_nether") || n.endsWith("_the_end") || Files.exists(path.resolve("level.dat")); }).sorted().toList()); } catch (IOException error) { showError(error.getMessage()); } }
-    private void backupWorlds() { if (isRemote()) { showError("Exaroton resmî API'si yedek oluşturma uç noktası sunmuyor. Diğer Pro işlemleri bağlı; yedeği Exaroton panelinden başlatmalısın."); return; } runTask("world-backup", manager::createBackup, path -> { DesktopNotifier.show("AeroMC", "Dünya yedeği hazır."); info("Yedek hazır", path.toString()); }); }
+    private void backupWorlds() { if (isRemote()) { showError("Exaroton resmî API'si yedek oluşturma uç noktası sunmuyor. Diğer Pro işlemleri bağlı; yedeği Exaroton panelinden başlatmalısın."); return; } runTask("world-backup", manager::createBackup, path -> { recordEvent("Yedek", "Dünya yedeği hazırlandı: " + path.getFileName()); DesktopNotifier.show("AeroMC", "Dünya yedeği hazır."); sendDiscord(DiscordNotificationEngine.Type.BACKUP, "Yedek hazır", path.getFileName() + " başarıyla oluşturuldu.", false); info("Yedek hazır", path.toString()); }); }
     private void createWorld(String name) {
         if (isRemote()) { showError("Exaroton'da yeni dünya yükleme resmî API tarafından sunulmuyor; server.properties içindeki level-name alanını Pro Dosyalar bölümünden değiştirebilirsin."); return; }
         if (!name.matches("[A-Za-z0-9_-]{1,40}")) { showError("Dünya adı yalnızca harf, rakam, _ ve - içerebilir."); return; }
@@ -460,10 +550,12 @@ public final class ProToolsPane {
         if (!extracted) { Files.move(recovery, world); throw new IOException("Yedekte " + world.getFileName() + " bulunamadı."); }
     }
 
-    private void addJob(String action, int minutes, String message) { if (action.equals("Duyuru gönder") && message.isBlank()) { showError("Duyuru metnini gir."); return; } jobs.add(new Job(UUID.randomUUID().toString(), LocalDateTime.now().plusMinutes(minutes), action, message)); jobs.sort(Comparator.comparing(job -> job.due)); saveJobs(); }
+    private void addJob(String action, int minutes, String message) { if (action.equals("Duyuru gönder") && message.isBlank()) { showError("Duyuru metnini gir."); return; } jobs.add(new Job(UUID.randomUUID().toString(), LocalDateTime.now().plusMinutes(minutes), action, message)); jobs.sort(Comparator.comparing(job -> job.due)); saveJobs(); recordEvent("Otomasyon", action + " görevi " + minutes + " dakika sonrası için planlandı."); }
     private void runDueJobs() { List<Job> due = jobs.stream().filter(job -> !job.due.isAfter(LocalDateTime.now())).toList(); for (Job job : due) { executeJob(job); jobs.remove(job); } if (!due.isEmpty()) saveJobs(); }
     private void executeJob(Job job) {
+        recordEvent("Otomasyon", "Planlanan görev çalıştırıldı: " + job.action);
         switch (job.action) { case "Yedek al" -> backupWorlds(); case "Yeniden başlat" -> restartConfigured(); case "Sunucuyu durdur" -> { if (isRemote()) runRemoteAction("Exaroton durdurma", exaroton::stopActiveServer); else manager.stop(); } case "Duyuru gönder" -> { if (isRemote()) runRemoteAction("Exaroton duyuru", () -> exaroton.executeAdminCommand("say " + job.message)); else try { manager.command("say " + job.message); } catch (IOException error) { showError(error.getMessage()); } } default -> { } }
+        sendDiscord(DiscordNotificationEngine.Type.AUTOMATION, "Zamanlanmış görev tetiklendi", job.action + (job.message.isBlank() ? "" : " • " + job.message), false);
         findings.add(0, now() + "  ZAMANLAYICI: " + job.action + " görevi çalıştırıldı.");
     }
     private void restartConfigured() { if (isRemote()) { runRemoteAction("Exaroton yeniden başlatma", exaroton::restartActiveServer); return; } Path jar = config.getServerJar(); if (jar == null || !Files.isRegularFile(jar)) { Platform.runLater(() -> showError("Yeniden başlatmak için Yerel JAR seçimi bulunamadı.")); return; } manager.restart(jar, config.getMemoryMb()); }
@@ -471,11 +563,11 @@ public final class ProToolsPane {
         if (isRemote()) {
             if (!exaroton.hasActiveServer()) { showError("Önce Exaroton sekmesinden bir sunucu seç."); return; } if (!confirm("Exaroton sunucusunda whitelist açılıp duyuru gönderildikten sonra sunucu kapatılsın mı? Yedekleme API tarafından desteklenmiyor.")) return;
             Task<Void> remote = new Task<>() { protected Void call() throws Exception { exaroton.executeAdminCommand("whitelist on").join(); exaroton.executeAdminCommand("say Sunucu bakım moduna giriyor. Lütfen güvenli şekilde çıkış yapın.").join(); exaroton.stopActiveServer().join(); return null; } };
-            remote.setOnSucceeded(event -> { findings.add(0, now() + "  BAKIM: Exaroton whitelist açıldı ve sunucu kapatıldı."); sendDiscord("🛠️ Exaroton bakım modu başlatıldı ve sunucu kapatıldı."); }); remote.setOnFailed(event -> showError(rootMessage(remote.getException()))); run(remote, "exaroton-maintenance"); return;
+            remote.setOnSucceeded(event -> { findings.add(0, now() + "  BAKIM: Exaroton whitelist açıldı ve sunucu kapatıldı."); sendDiscord(DiscordNotificationEngine.Type.MAINTENANCE, "Exaroton bakım modu", "Whitelist açıldı, oyuncular bilgilendirildi ve sunucu kapatıldı.", false); }); remote.setOnFailed(event -> showError(rootMessage(remote.getException()))); run(remote, "exaroton-maintenance"); return;
         }
         if (!manager.isRunning()) { showError("Bakım modu için yerel sunucu çalışıyor olmalı."); return; } if (!confirm("Bakım modu sunucuyu yedekleyip kapatacak. Devam edilsin mi?")) return;
         Task<Path> task = new Task<>() { protected Path call() throws Exception { manager.command("whitelist on"); manager.command("say Sunucu bakım moduna giriyor. Lütfen güvenli şekilde çıkış yapın."); manager.command("save-all flush"); Thread.sleep(1500); Path backup = manager.createBackup(); manager.stop(); return backup; } };
-        task.setOnSucceeded(event -> { findings.add(0, now() + "  BAKIM: Whitelist açıldı, yedek alındı ve sunucu kapatıldı."); DesktopNotifier.show("AeroMC", "Bakım modu tamamlandı."); sendDiscord("🛠️ Bakım modu tamamlandı; sunucu yedeklendi ve kapatıldı."); }); task.setOnFailed(event -> showError(rootMessage(task.getException()))); run(task, "maintenance-mode");
+        task.setOnSucceeded(event -> { findings.add(0, now() + "  BAKIM: Whitelist açıldı, yedek alındı ve sunucu kapatıldı."); DesktopNotifier.show("AeroMC", "Bakım modu tamamlandı."); sendDiscord(DiscordNotificationEngine.Type.MAINTENANCE, "Bakım modu tamamlandı", "Whitelist açıldı, yedek alındı ve yerel sunucu güvenli şekilde kapatıldı.", false); }); task.setOnFailed(event -> showError(rootMessage(task.getException()))); run(task, "maintenance-mode");
     }
 
     private void markJoined(String name) { if (onlinePlayers.contains(name)) return; PlayerProfile profile = profiles.computeIfAbsent(name, PlayerProfile::new); long now = Instant.now().getEpochSecond(); if (profile.firstSeen == 0) profile.firstSeen = now; profile.lastSeen = now; profile.joins++; profile.activeSince = now; onlinePlayers.add(name); refreshPlayerRows(); savePlayers(); }
@@ -507,16 +599,107 @@ public final class ProToolsPane {
     private void loadJobs() { Properties data = loadProperties(JOB_FILE); for (String id : data.stringPropertyNames()) { try { String[] p = data.getProperty(id).split("\\|", 3); LocalDateTime due = LocalDateTime.parse(p[0]); if (due.isAfter(LocalDateTime.now())) jobs.add(new Job(id, due, p[1], new String(Base64.getDecoder().decode(p.length > 2 ? p[2] : ""), StandardCharsets.UTF_8))); } catch (Exception ignored) { } } jobs.sort(Comparator.comparing(job -> job.due)); }
     private void saveJobs() { Properties data = new Properties(); for (Job job : jobs) data.setProperty(job.id, job.due + "|" + job.action + "|" + Base64.getEncoder().encodeToString(job.message.getBytes(StandardCharsets.UTF_8))); saveProperties(JOB_FILE, data, "AeroMC scheduled jobs"); }
 
-    private void sendDiscord(String message) {
-        if (!discordEnabled.isSelected()) return; String url = webhook.getText().trim(); if (!url.startsWith("https://")) { Platform.runLater(() -> showError("Geçerli bir HTTPS Discord webhook adresi gir.")); return; }
-        String body = "{\"content\":\"" + json(message) + "\"}"; HttpRequest request;
-        try { request = HttpRequest.newBuilder(URI.create(url)).timeout(java.time.Duration.ofSeconds(10)).header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build(); } catch (Exception error) { showError("Webhook adresi geçersiz."); return; }
-        http.sendAsync(request, HttpResponse.BodyHandlers.discarding()).thenAccept(response -> { if (response.statusCode() < 200 || response.statusCode() >= 300) Platform.runLater(() -> showError("Discord mesajı reddedildi: HTTP " + response.statusCode())); }).exceptionally(error -> { Platform.runLater(() -> showError("Discord bağlantısı kurulamadı: " + rootMessage(error))); return null; });
+    private void recordEvent(String category, String detail) {
+        Runnable add = () -> {
+            String value = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss")) + "  •  " + category + "  •  " + trim(detail == null ? "Bilinmeyen olay" : detail, 220);
+            if (!events.isEmpty() && events.get(0).endsWith("  •  " + category + "  •  " + trim(detail == null ? "Bilinmeyen olay" : detail, 220))) return;
+            events.add(0, value); while (events.size() > 300) events.remove(events.size() - 1); saveEvents();
+        };
+        if (Platform.isFxApplicationThread()) add.run(); else Platform.runLater(add);
     }
+
+    private void loadEvents() {
+        try { if (Files.exists(EVENT_FILE)) { List<String> saved = Files.readAllLines(EVENT_FILE, StandardCharsets.UTF_8); events.setAll(saved.stream().filter(value -> !value.isBlank()).limit(300).toList()); } }
+        catch (IOException ignored) { }
+    }
+
+    private void saveEvents() {
+        try { Files.createDirectories(EVENT_FILE.getParent()); atomicWrite(EVENT_FILE, String.join(System.lineSeparator(), events) + (events.isEmpty() ? "" : System.lineSeparator())); }
+        catch (IOException ignored) { }
+    }
+
+    private void loadDiscordPreferences() {
+        Properties values = loadProperties(DISCORD_SETTINGS_FILE); discordEnabled.setSelected(Boolean.parseBoolean(values.getProperty("enabled", "false"))); discordStatus.setSelected(Boolean.parseBoolean(values.getProperty("status", "true"))); discordCrash.setSelected(Boolean.parseBoolean(values.getProperty("crash", "true"))); discordPlayers.setSelected(Boolean.parseBoolean(values.getProperty("players", "false"))); discordPerformance.setSelected(Boolean.parseBoolean(values.getProperty("performance", "true"))); discordMaintenance.setSelected(Boolean.parseBoolean(values.getProperty("maintenance", "true"))); discordAutomation.setSelected(Boolean.parseBoolean(values.getProperty("automation", "true"))); discordMentionCritical.setSelected(Boolean.parseBoolean(values.getProperty("mentionCritical", "false"))); discordName.setText(values.getProperty("username", "AeroMC")); discordRoleId.setText(values.getProperty("roleId", ""));
+    }
+    private void saveDiscordPreferences(boolean notify) {
+        if (discordMentionCritical.isSelected() && !DiscordNotificationEngine.validRole(discordRoleId.getText())) { showError("Kritik etiketleme için 17–20 haneli Discord rol kimliği gir."); return; }
+        Properties values = new Properties(); values.setProperty("enabled", Boolean.toString(discordEnabled.isSelected())); values.setProperty("status", Boolean.toString(discordStatus.isSelected())); values.setProperty("crash", Boolean.toString(discordCrash.isSelected())); values.setProperty("players", Boolean.toString(discordPlayers.isSelected())); values.setProperty("performance", Boolean.toString(discordPerformance.isSelected())); values.setProperty("maintenance", Boolean.toString(discordMaintenance.isSelected())); values.setProperty("automation", Boolean.toString(discordAutomation.isSelected())); values.setProperty("mentionCritical", Boolean.toString(discordMentionCritical.isSelected())); values.setProperty("username", discordName.getText().isBlank() ? "AeroMC" : discordName.getText().trim()); values.setProperty("roleId", discordRoleId.getText().trim()); saveProperties(DISCORD_SETTINGS_FILE, values, "AeroMC Discord notification preferences");
+        String enteredUrl = webhook.getText().trim();
+        if (config.isAutomaticCredentialVaultEnabled() && !enteredUrl.isBlank()) {
+            try { DiscordNotificationEngine.validateWebhook(enteredUrl); storeAutomaticDiscordWebhook(enteredUrl); }
+            catch (IllegalArgumentException error) { showError(error.getMessage()); return; }
+        }
+        if (notify) discordState.setText("Discord bildirim ayarları kaydedildi" + (config.isAutomaticCredentialVaultEnabled() && !enteredUrl.isBlank() ? " • webhook kasaya ekleniyor" : ""));
+    }
+    private DiscordNotificationEngine.Settings discordSettings() {
+        EnumSet<DiscordNotificationEngine.Type> types = EnumSet.noneOf(DiscordNotificationEngine.Type.class); if (discordStatus.isSelected()) types.add(DiscordNotificationEngine.Type.STATUS); if (discordCrash.isSelected()) types.add(DiscordNotificationEngine.Type.CRASH); if (discordPlayers.isSelected()) types.add(DiscordNotificationEngine.Type.PLAYER); if (discordPerformance.isSelected()) types.add(DiscordNotificationEngine.Type.PERFORMANCE); if (discordMaintenance.isSelected()) { types.add(DiscordNotificationEngine.Type.MAINTENANCE); types.add(DiscordNotificationEngine.Type.BACKUP); } if (discordAutomation.isSelected()) types.add(DiscordNotificationEngine.Type.AUTOMATION); return new DiscordNotificationEngine.Settings(discordEnabled.isSelected(), types, discordName.getText(), discordMentionCritical.isSelected(), discordRoleId.getText());
+    }
+    public void setAutomaticCredentialVaultEnabled(boolean enabled) {
+        if (!enabled) {
+            automaticDiscordWebhook = null; webhook.clear();
+            try { DeviceCredentialStore.delete(DeviceCredentialStore.Kind.DISCORD); }
+            catch (IOException error) { throw new IllegalStateException("Discord otomatik kasası silinemedi: " + error.getMessage(), error); }
+            updateDiscordVaultPrompt(); if (discordViewBuilt) discordState.setText("Otomatik Discord kasası kapatıldı"); return;
+        }
+        updateDiscordVaultPrompt();
+        String entered = webhook.getText().trim();
+        if (!entered.isBlank()) {
+            try { DiscordNotificationEngine.validateWebhook(entered); storeAutomaticDiscordWebhook(entered); return; }
+            catch (IllegalArgumentException ignored) { }
+        }
+        if (discordViewBuilt) loadAutomaticDiscordWebhook();
+    }
+    private void loadAutomaticDiscordWebhook() {
+        if (!config.isAutomaticCredentialVaultEnabled() || automaticDiscordWebhook != null || discordVaultLoading || !DeviceCredentialStore.exists(DeviceCredentialStore.Kind.DISCORD)) { updateDiscordVaultPrompt(); return; }
+        discordVaultLoading = true; discordState.setText("Otomatik Discord kasası açılıyor...");
+        Task<String> task = new Task<>() { protected String call() throws Exception { String value = DeviceCredentialStore.load(DeviceCredentialStore.Kind.DISCORD); DiscordNotificationEngine.validateWebhook(value); return value; } };
+        task.setOnSucceeded(event -> { discordVaultLoading = false; if (!config.isAutomaticCredentialVaultEnabled()) { automaticDiscordWebhook = null; updateDiscordVaultPrompt(); return; } automaticDiscordWebhook = task.getValue(); webhook.clear(); updateDiscordVaultPrompt(); discordState.setText("Webhook otomatik cihaz kasasından hazır"); });
+        task.setOnFailed(event -> { discordVaultLoading = false; automaticDiscordWebhook = null; updateDiscordVaultPrompt(); discordState.setText("Otomatik webhook kasası açılamadı; webhook'u yeniden gir"); });
+        run(task, "discord-auto-vault-load");
+    }
+    private void storeAutomaticDiscordWebhook(String url) {
+        if (!config.isAutomaticCredentialVaultEnabled()) return;
+        discordVaultLoading = true;
+        Task<Void> task = new Task<>() { protected Void call() throws Exception { DeviceCredentialStore.save(DeviceCredentialStore.Kind.DISCORD, url); return null; } };
+        task.setOnSucceeded(event -> { discordVaultLoading = false; if (!config.isAutomaticCredentialVaultEnabled()) { automaticDiscordWebhook = null; try { DeviceCredentialStore.delete(DeviceCredentialStore.Kind.DISCORD); } catch (IOException ignored) { } updateDiscordVaultPrompt(); return; } automaticDiscordWebhook = url; webhook.clear(); updateDiscordVaultPrompt(); discordState.setText("Webhook otomatik cihaz kasasında hazır"); });
+        task.setOnFailed(event -> { discordVaultLoading = false; discordState.setText("Webhook otomatik kasaya kaydedilemedi"); showError("Webhook otomatik kasaya kaydedilemedi: " + rootMessage(task.getException())); });
+        run(task, "discord-auto-vault-save");
+    }
+    private void updateDiscordVaultPrompt() {
+        if (config.isAutomaticCredentialVaultEnabled() && (automaticDiscordWebhook != null || DeviceCredentialStore.exists(DeviceCredentialStore.Kind.DISCORD))) webhook.setPromptText("Bu cihazın güvenli kasasından otomatik kullanılıyor");
+        else if (config.isAutomaticCredentialVaultEnabled()) webhook.setPromptText("Webhook'u bir kez gir; otomatik kasaya kaydedilir");
+        else webhook.setPromptText("https://discord.com/api/webhooks/...");
+    }
+    private void storeDiscordWebhook() {
+        String url = webhook.getText().trim(); try { DiscordNotificationEngine.validateWebhook(url); } catch (IllegalArgumentException error) { showError(error.getMessage()); return; }
+        Optional<char[]> password = discordPasswordDialog("Discord Webhook'unu Şifrele", true); if (password.isEmpty()) return; char[] value = password.get();
+        try { DiscordWebhookStore.save(url, value); discordLoadSaved.setDisable(false); discordDeleteSaved.setDisable(false); discordState.setText("Webhook şifreli olarak saklandı"); if (config.isAutomaticCredentialVaultEnabled()) storeAutomaticDiscordWebhook(url); }
+        catch (Exception error) { showError("Webhook saklanamadı: " + rootMessage(error)); } finally { Arrays.fill(value, '\0'); }
+    }
+    private void loadDiscordWebhook() {
+        Optional<char[]> password = discordPasswordDialog("Discord Webhook Kasasını Aç", false); if (password.isEmpty()) return; char[] value = password.get();
+        try { String url = DiscordWebhookStore.load(value); if (config.isAutomaticCredentialVaultEnabled()) { automaticDiscordWebhook = url; webhook.clear(); storeAutomaticDiscordWebhook(url); } else webhook.setText(url); discordState.setText("Şifreli webhook bu oturum için açıldı"); updateDiscordVaultPrompt(); }
+        catch (Exception error) { showError("Webhook açılamadı. Parola yanlış veya kayıt bozuk olabilir."); } finally { Arrays.fill(value, '\0'); }
+    }
+    private void deleteDiscordWebhook() {
+        if (!confirm("Şifreli Discord webhook kaydı silinsin mi?")) return; try { DiscordWebhookStore.delete(); webhook.clear(); discordLoadSaved.setDisable(true); discordDeleteSaved.setDisable(true); discordState.setText(automaticDiscordWebhook == null ? "Şifreli webhook kaydı silindi" : "Parolalı kayıt silindi • otomatik cihaz kasası hazır"); } catch (Exception error) { showError(rootMessage(error)); }
+    }
+    private Optional<char[]> discordPasswordDialog(String title, boolean confirmPassword) {
+        Dialog<char[]> dialog = new Dialog<>(); dialog.setTitle(title); dialog.setHeaderText(confirmPassword ? "En az 8 karakterlik ana parola belirle. Parola kaydedilmez." : "Şifreli webhook'u açmak için ana parolayı gir."); PasswordField first = new PasswordField(); SecretFieldGuard.protect(first); first.setPromptText("Ana parola"); VBox fields = new VBox(8, first); PasswordField second = new PasswordField(); SecretFieldGuard.protect(second); if (confirmPassword) { second.setPromptText("Ana parolayı tekrar yaz"); fields.getChildren().add(second); } dialog.getDialogPane().setContent(fields); dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL); dialog.setResultConverter(button -> { if (button != ButtonType.OK) return null; if (first.getText().length() < 8) { showError("Ana parola en az 8 karakter olmalı."); return null; } if (confirmPassword && !first.getText().equals(second.getText())) { showError("Ana parolalar eşleşmiyor."); return null; } return first.getText().toCharArray(); }); return dialog.showAndWait();
+    }
+    private void sendDiscordTest() { sendDiscord(DiscordNotificationEngine.Type.TEST, "AeroMC bağlantı testi", "Webhook bağlantısı başarılı. Bildirim merkezi kullanıma hazır 🎮", false, true); }
+    private void sendDiscord(DiscordNotificationEngine.Type type, String title, String message, boolean critical) { sendDiscord(type, title, message, critical, false); }
+    private void sendDiscord(DiscordNotificationEngine.Type type, String title, String message, boolean critical, boolean force) {
+        DiscordNotificationEngine.Settings settings = discordSettings(); DiscordNotificationEngine.Event event = new DiscordNotificationEngine.Event(type, title, message, isRemote() ? "Exaroton" : "Yerel JAR", discordServerName(), critical); if (!force && !DiscordNotificationEngine.shouldSend(settings, event)) return; URI uri;
+        String enteredUrl = webhook.getText().trim(), selectedUrl = enteredUrl.isBlank() ? automaticDiscordWebhook : enteredUrl;
+        try { uri = DiscordNotificationEngine.validateWebhook(selectedUrl); } catch (IllegalArgumentException error) { discordState.setText(error.getMessage()); if (force) showError(error.getMessage()); return; }
+        discordState.setText("Discord bildirimi gönderiliyor..."); String payload = DiscordNotificationEngine.payload(settings, event); discordClient.send(uri, payload).thenAccept(result -> Platform.runLater(() -> { discordState.setText(result.message()); if (result.success() && config.isAutomaticCredentialVaultEnabled() && !enteredUrl.isBlank()) { automaticDiscordWebhook = enteredUrl; webhook.clear(); updateDiscordVaultPrompt(); storeAutomaticDiscordWebhook(enteredUrl); } if (force && result.success()) info("Discord bağlantısı başarılı", "Test embed mesajı gönderildi."); else if (force && !result.success()) showError(result.message()); }));
+    }
+    private String discordServerName() { if (isRemote() && remoteSnapshot != null) return remoteSnapshot.name(); Path folder = manager.getServerFolder(); return folder == null || folder.getFileName() == null ? (isRemote() ? exaroton.getActiveServerName() : "Yerel sunucu") : folder.getFileName().toString(); }
 
     private void runRemoteAction(String name, Callable<CompletableFuture<Void>> action) { Task<Void> task = new Task<>() { protected Void call() throws Exception { action.call().join(); return null; } }; task.setOnFailed(event -> showError(name + " başarısız: " + rootMessage(task.getException()))); run(task, name.toLowerCase(Locale.ROOT).replace(' ', '-')); }
 
-    public void shutdown() { metrics.stop(); scheduler.stop(); if (crisisActive) { try { restoreCrisisSettings(); } catch (Exception ignored) { } } for (String name : new HashSet<>(onlinePlayers)) markLeft(name); }
+    public void shutdown() { metrics.stop(); scheduler.stop(); discordClient.close(); webhook.clear(); automaticDiscordWebhook = null; if (crisisActive) { try { restoreCrisisSettings(); } catch (Exception ignored) { } } for (String name : new HashSet<>(onlinePlayers)) markLeft(name); }
     private void atomicWrite(Path file, String text) throws IOException { Path temp = Files.createTempFile(file.getParent(), ".aeromc-", ".tmp"); Files.writeString(temp, text, StandardCharsets.UTF_8); try { Files.move(temp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); } catch (AtomicMoveNotSupportedException ignored) { Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING); } }
     private void updateProperty(Path file, String key, String value) throws IOException { List<String> lines = Files.exists(file) ? Files.readAllLines(file, StandardCharsets.UTF_8) : new ArrayList<>(); boolean found = false; List<String> out = new ArrayList<>(); for (String line : lines) { if (!line.stripLeading().startsWith("#") && line.startsWith(key + "=")) { out.add(key + "=" + value); found = true; } else out.add(line); } if (!found) out.add(key + "=" + value); Files.createDirectories(file.getParent()); atomicWrite(file, String.join(System.lineSeparator(), out) + System.lineSeparator()); }
     private Properties loadProperties(Path file) { Properties values = new Properties(); try { if (Files.exists(file)) try (Reader reader = Files.newBufferedReader(file)) { values.load(reader); } } catch (IOException ignored) { } return values; }
@@ -525,6 +708,7 @@ public final class ProToolsPane {
     private void run(Task<?> task, String name) { Thread thread = new Thread(task, "aeromc-" + name); thread.setDaemon(true); thread.start(); }
     private Tab tab(String title, Node content) { Tab tab = new Tab(title, content); tab.setClosable(false); return tab; }
     private VBox page(Node... children) { VBox page = new VBox(14, children); page.setPadding(new Insets(18)); for (Node child : children) VBox.setVgrow(child, Priority.ALWAYS); return page; }
+    private ScrollPane scrollable(Node content) { ScrollPane scroll = new ScrollPane(content); scroll.setFitToWidth(true); scroll.setFitToHeight(false); scroll.getStyleClass().add("control-scroll"); return scroll; }
     private VBox card(String title, Node... nodes) { Label label = new Label(title); label.getStyleClass().add("section-title"); VBox box = new VBox(11); box.getChildren().add(label); box.getChildren().addAll(nodes); box.getStyleClass().add("card"); return box; }
     private VBox metricCard(String title, Label value) { VBox box = card(title, value); box.setMaxWidth(Double.MAX_VALUE); return box; }
     private static Label metric(String text) { Label label = new Label(text); label.getStyleClass().add("metric"); return label; }
@@ -534,7 +718,6 @@ public final class ProToolsPane {
     private String durationText(long seconds) { long hours = seconds / 3600, minutes = seconds % 3600 / 60; return hours > 0 ? hours + " sa " + minutes + " dk" : minutes + " dk"; }
     private String now() { return LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss")); }
     private String trim(String value, int max) { String clean = value.strip(); return clean.length() <= max ? clean : clean.substring(0, max) + "…"; }
-    private String json(String value) { return value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", ""); }
     private boolean confirm(String message) { Alert alert = new Alert(Alert.AlertType.CONFIRMATION, LanguageManager.text(message), ButtonType.YES, ButtonType.NO); alert.setHeaderText(LanguageManager.text("Onay gerekiyor")); return alert.showAndWait().orElse(ButtonType.NO) == ButtonType.YES; }
     private void showError(String message) { if (!Platform.isFxApplicationThread()) { Platform.runLater(() -> showError(message)); return; } Alert alert = new Alert(Alert.AlertType.ERROR, LanguageManager.text(message == null ? "Bilinmeyen hata" : message), ButtonType.OK); alert.setHeaderText(LanguageManager.text("İşlem tamamlanamadı")); alert.showAndWait(); }
     private void info(String title, String message) { Alert alert = new Alert(Alert.AlertType.INFORMATION, LanguageManager.text(message), ButtonType.OK); alert.setHeaderText(LanguageManager.text(title)); alert.showAndWait(); }

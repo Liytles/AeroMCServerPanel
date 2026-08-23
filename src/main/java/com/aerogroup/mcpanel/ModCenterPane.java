@@ -89,7 +89,7 @@ public final class ModCenterPane {
     private void detectServer() {
         String selectedProvider = provider.getValue(); if (selectedProvider == null) return;
         if ("Aternos".equals(selectedProvider)) { if (gameVersion.getText().isBlank()) detection.setText("Aternos için Minecraft sürümünü ve loader'ı elle seç."); return; }
-        if ("Yerel JAR".equals(selectedProvider)) { refreshTargets(); ServerTarget selected = target.getValue(); if (selected == null) { detection.setText("Önce Sunucular bölümünden bir JAR seç veya NextGen ile sunucu kur."); return; } Detected value = detectLocal(selected); applyDetected(value); return; }
+        if ("Yerel JAR".equals(selectedProvider)) { refreshTargets(); ServerTarget selected = target.getValue(); if (selected == null) { detection.setText("Önce Sunucular bölümünden bir JAR seç veya Araçlar → Kurulum ile sunucu kur."); return; } Detected value = detectLocal(selected); applyDetected(value); return; }
         if (!exaroton.hasActiveServer()) { detection.setText("Önce Sunucular → Exaroton bölümünden bir sunucu seç."); return; }
         detection.setText("Exaroton yazılım bilgisi alınıyor..."); Task<Detected> task = new Task<>() { protected Detected call() throws Exception { ExarotonPane.ProSnapshot snapshot = exaroton.fetchProSnapshot().join(); return new Detected(normalizeVersion(snapshot.softwareVersion()), normalizeLoader(snapshot.softwareName()), snapshot.name() + " • " + snapshot.softwareName() + " " + snapshot.softwareVersion()); } }; task.setOnSucceeded(event -> applyDetected(task.getValue())); task.setOnFailed(event -> detection.setText("Exaroton yazılımı algılanamadı: " + rootMessage(task.getException()))); run(task, "mod-detect-exaroton");
     }

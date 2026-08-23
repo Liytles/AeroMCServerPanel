@@ -4,11 +4,11 @@ Minecraft sunucularını üç sağlayıcı modunda yöneten JavaFX masaüstü pa
 
 - **Yerel JAR:** Başlat/durdur, canlı konsol, online oyuncular ve ZIP yedekleme.
 - **Exaroton:** Resmî API ile sunucuları listeleme, başlatma/durdurma/yeniden başlatma, canlı konsol ve oyuncular.
-- **Aternos:** Sunucu adresinden online durum, sürüm, oyuncu ve ping kontrolü; resmî Aternos paneline geçiş.
+- **Aternos:** SRV yönlendirmeli Aternos adresleri ve özel portlarla canlı online durum, sürüm, oyuncu ve ping kontrolü; adres hatırlama, 15 saniyelik otomatik yenileme ve resmî panele geçiş.
 
-Exaroton API anahtarı varsayılan olarak yalnızca uygulama belleğinde tutulur. Kullanıcı isterse en az 8 karakterlik bir ana parola belirleyebilir; anahtar PBKDF2-HMAC-SHA256 ile türetilen anahtar ve AES-256-GCM kullanılarak şifrelenir. Ana parola hiçbir yere kaydedilmez. Aternos web otomasyonu servis kurallarına aykırı olduğu için kullanılmaz.
+Exaroton API anahtarı varsayılan olarak yalnızca uygulama belleğinde tutulur. Kullanıcı isterse en az 8 karakterlik bir ana parola belirleyebilir; anahtar PBKDF2-HMAC-SHA256 ile türetilen anahtar ve AES-256-GCM kullanılarak şifrelenir. Ana parola hiçbir yere kaydedilmez. **Ayarlar → Güvenli Kimlik Bilgileri** seçeneği ayrıca Exaroton anahtarını ve Discord webhook'unu cihaz/kullanıcı bağlı AES-256-GCM kasasında tutup sonraki açılışta alanlara geri yazmadan otomatik kullanabilir. Aternos web otomasyonu servis kurallarına aykırı olduğu için kullanılmaz.
 
-## NextGen merkezi
+## Araçlar merkezi
 
 - PaperMC, Fabric ve Vanilla için resmî kaynakları kullanan tek tık sunucu kurulum sihirbazı
 - Açık Minecraft EULA onayı, Java sürüm kontrolü, RAM aktarımı ve Windows/Linux/macOS başlatma betikleri
@@ -18,14 +18,21 @@ Exaroton API anahtarı varsayılan olarak yalnızca uygulama belleğinde tutulur
 - `server.properties` için görüş mesafesi, simülasyon mesafesi, RAM ve disk yazma önerileri sunan optimizasyon asistanı
 - Telefon ve diğer bilgisayarlar için mobil uyumlu uzaktan kontrol ekranı
 - Viewer, Moderator ve Admin rolleri; PBKDF2-HMAC-SHA256 parola özetleri, başarısız giriş hız sınırı ve işlem günlüğü
-- Türkçe/İngilizce tam arayüz geçişi: sekmeler, düğmeler, alan ipuçları, seçim menüleri, tablolar, uyarılar ve çalışma sırasında değişen durum metinleri
-- Kalıcı dil tercihi; seçilen dil sonraki açılışta otomatik uygulanır
-- Güçsüz bilgisayarlar için Canlı Harita'yı anında açıp kapatan kalıcı performans ayarı
+
+Uygulama genelindeki Türkçe/İngilizce dil tercihi, güvenli otomatik kimlik kasası ve Canlı Harita performans anahtarı, kurulum araçlarından ayrılan ana **Ayarlar** sekmesinde bulunur ve sonraki açılışta korunur. API anahtarı, webhook ve ana parola alanlarında kopyala/kes, sağ tık ve sürükleme engellenir; otomatik değerler arayüz alanına hiç yerleştirilmez. Bu önlemler yanlışlıkla panoya sızmayı ve diskten doğrudan okumayı zorlaştırır ancak aynı kullanıcı yetkisiyle çalışan kötü amaçlı yazılıma karşı mutlak koruma değildir.
+
+## AeroMC Güncelleme Merkezi
+
+**Ayarlar → AeroMC Güncelleme Merkezi**, sabitlenmiş `Liytles/AeroMCServerPanel` GitHub Releases kaynağından kararlı veya beta sürümleri denetler. İşletim sistemine uygun `.exe`, `.deb` veya `.dmg` paketini seçer; indirme ilerlemesini ve sürüm notlarını gösterir. Paket yalnızca GitHub HTTPS adresinden indirilir ve aynı yayındaki `<kurucu-adı>.sha256` dosyasıyla SHA-256 doğrulaması geçerse açılabilir. Kullanıcının `.aeromc-panel` ayarları, kimlik kasaları ve Minecraft sunucu klasörleri güncelleme sırasında değiştirilmez.
+
+Güncelleme yayınlamak için depo ve Releases alanı anonim kullanıcılar tarafından okunabilir olmalıdır. `pom.xml` sürümünü örneğin `3.1.0` yap, üç platform paketini üret ve `v3.1.0` GitHub Release'ine her kurucuyla birlikte paketleme betiklerinin oluşturduğu eş adlı `.sha256` dosyasını yükle. Private depodaki yayınlar kullanıcı tokenı olmadan okunamadığından masaüstü güncelleme merkezi private Release üzerinden çalışmaz.
 
 Uzaktan erişim varsayılan olarak yalnızca `127.0.0.1` üzerinde açılır. LAN seçeneğini sadece güvendiğin özel ağda kullan; bağlantı yerel HTTP olduğundan internete port yönlendirmesi yapma. En az 10 karakterli güçlü bir parola kullan.
 
 ## Yönetim merkezi özellikleri
 
+- Yerel sunucuyu açmadan önce JAR, Java, EULA, port, RAM, disk, yedek ve mod/plugin dosyalarını denetleyen **Başlatma Kontrolü**
+- Kritik sorunlarda güvenli başlatma engeli; açık kullanıcı onayıyla EULA düzeltme ve uyarılarla devam seçeneği
 - Ana panelde favori sunucu kartları ve 30 saniyelik otomatik durum yenileme
 - Oyuncu artışı, sunucu kapanması/çökmesi ve tamamlanan yedek için masaüstü bildirimleri
 - Son 24 ölçümden mini oyuncu grafiği ve çalışma süresi
@@ -33,6 +40,17 @@ Uzaktan erişim varsayılan olarak yalnızca `127.0.0.1` üzerinde açılır. LA
 - Hata, uyarı, oyuncu ve panel satırlarını ayıran renkli konsol
 - Tüm oyunculara hızlı mesaj gönderme
 - Exaroton hesap kredisi ve sunucu RAM bilgisi
+- Resmî API'den adres, durum, yazılım/sürüm, RAM ve hesap kredisini doğrulayan **Exaroton Hazırlık Denetimi**; 12 saniyelik kesin zaman aşımı, başarısızlıkta onaylı denetimsiz başlatma ve Ayarlar'dan tamamen kapatma
+- Oyuncular çevrimiçiyken yeniden başlatma onayı ve isteğe bağlı otomatik duyuru
+- Seçili sunucunun RAM'inden resmî `1 kredi / GiB / saat` tarifesiyle maliyet ve tahmini kalan süre; ayrıca hesap bakiyesi değişiminden ayrı gözlenen tüketim sunan **Exaroton Kredi Koruması**
+- Kalıcı kredi geçmişi/grafiği, ayarlanabilir düşük kredi bildirimi ve yalnızca oyuncusuz sunucuyu güvenli otomatik durdurma
+- Düşük kredi eşiğini tamamen açıp kapatma ve isteğe bağlı olarak eşik altında seçili Exaroton sunucusunu duyuruyla otomatik durdurma
+- Hesaptaki bütün sunucuları kartlarla gösteren **Exaroton Filo Paneli**: toplam online/çöken sunucu, oyuncu, aktif RAM ve saatlik maliyet özeti
+- Sunucu kartından tekil yönetim ve işlemden hemen önce oyuncu sayısını yeniden doğrulayan, onaylı toplu oyuncusuz-sunucu durdurma
+- Hedef sunucuya güvenle bağlanan **Exaroton Otomasyon Merkezi**: hafta içi/hafta sonu ve gece yarısını aşabilen ayrı çalışma programları
+- Sunucu online olana kadar hazır olma takibi, sınırlı çökme kurtarma denemeleri ve oyuncu gelmezse ayarlanabilir otomatik durdurma
+- En yüksek öncelikli günlük/haftalık kredi bütçeleri; sınır dolduğunda duyuruyla durdurma ve bütçe yenilenene kadar otomatik başlatmayı engelleme
+- Kullanıcı, otomasyon, kredi koruması, durum geçişi, hata ve hazır olma olaylarını yerelde saklayan Exaroton olay günlüğü; bütün otomasyonları tek düğmeyle kapatma
 - **Yönetim** sekmesinden Yerel JAR veya Exaroton sunucusu seçme
 - Whitelist, OP, kick, ban, özel mesaj ve geri alma işlemleri
 - İşlem onayı ve saat damgalı yönetim günlüğü
@@ -47,10 +65,13 @@ Uzaktan erişim varsayılan olarak yalnızca `127.0.0.1` üzerinde açılır. LA
 - Temel yapılandırma dosyaları için güvenli editör, otomatik `.bak` kopyası ve atomik kayıt
 - Yerel Paper/Spigot eklentileri ve Fabric modları için ekleme, etkinleştirme ve devre dışı bırakma
 - Dünya listeleme, ZIP yedekleme, güvenli geri yükleme ve yeni dünya seçimi
-- Dakika bazlı kalıcı yedek, yeniden başlatma, durdurma ve duyuru görevleri
+- **Görevler & Bildirimler** altında dakika bazlı tek seferlik yedek, yeniden başlatma, durdurma ve duyuru görevleri; Exaroton'un sürekli kuralları için doğrudan Exaroton Otomasyon Merkezi'ne yönlendirme
+- Yalnızca Yerel JAR seçiliyken görünen yerel çökme sonrası yeniden başlatma ve RAM uyarısı; Exaroton çökme kurtarmasının tek kaynağı Exaroton Otomasyon Merkezi'dir
 - İlk giriş, son görülme, giriş sayısı ve toplam oyun süresini saklayan oyuncu profilleri
 - Çökme sonrası otomatik yeniden başlatma ve yüksek RAM bildirimi
-- Oturumluk Discord webhook bildirimleri
+- Olay türü filtreleri, renkli embed mesajları, sağlayıcı/sunucu bilgisi ve güvenli `allowed_mentions` kullanan **Discord Bildirim Merkezi**
+- Kritik olaylarda isteğe bağlı tek rol etiketi, istenmeyen `@everyone`/rol etiketlerini engelleme, 429 hız sınırında kontrollü yeniden deneme
+- Webhook URL'sini oturumluk kullanma, ana paroladan türetilen AES-256-GCM anahtarıyla ayrı kasada şifreli saklama veya Ayarlar'daki cihaz bağlı kasayla alanı doldurmadan otomatik açma
 - Whitelist, duyuru, kayıt, yedek ve güvenli kapatmayı birleştiren tek tık bakım modu
 
 ## Tek Tık Mod Merkezi
@@ -80,6 +101,8 @@ Kurulum tamamlandıktan sonra mod veya eklentinin etkinleşmesi için sunucuyu y
 Eski yatay Pro Araçlar sekmeleri, daha rahat bulunabilmeleri için sol menülü **Kontrol Merkezi** altında toplandı. Yerel JAR, Exaroton ve Aternos ekranları da ana menüdeki **Sunucular** bölümüne alındı.
 
 - TPS, RAM, CPU, gecikme, aşırı yük uyarıları ve oturumdaki çökmelerden hesaplanan canlı **0–100 Sunucu Sağlık Puanı**
+- Paper 1.21+ için tek tık **Lag Avcısı**: Spark profiler veya sağlık raporu başlatma, konsoldaki rapor bağlantısını otomatik yakalama ve açma
+- Başlatma, çökme, oyuncu, yedek, otomasyon, Kriz Modu ve Spark olaylarını saklayan kopyalanabilir **Olay Zaman Çizelgesi**
 - Sağlık puanını etkileyen nedenleri anlık gösteren Mükemmel / Sağlıklı / Dikkat / Riskli / Kritik durumları
 - Çökmeden önceki son 300 konsol satırını inceleyen; RAM, port, Java, mod, eklenti ve watchdog sorunlarını ayıran **Akıllı Çökme Doktoru**
 - Olası şüpheli JAR, güven yüzdesi, kanıt ve güvenli çözüm sırası
@@ -93,14 +116,14 @@ Eski yatay Pro Araçlar sekmeleri, daha rahat bulunabilmeleri için sol menülü
 
 - Uyumluluk ekranında taranacak yerel sunucu açıkça seçilir; bilinen JAR listesi sunucu değiştiğinde otomatik yenilenir.
 - `plugins` ve `mods` klasörleri aynı taramada incelenir. Klasörler boşsa araç artık boş ekran yerine açıklayıcı sonuç gösterir.
-- NextGen ile kurulan veya **JAR Seç** üzerinden kullanılan her yerel sunucu kalıcı listeye eklenir.
+- **Araçlar → Kurulum** ile kurulan veya **JAR Seç** üzerinden kullanılan her yerel sunucu kalıcı listeye eklenir.
 - Her sunucu kendi `<sunucu klasörü>/backups` alanını kullanır; listeler birbirine karışmaz.
 - Seçili ZIP yedeği, yol güvenlik kontrolü ve kullanıcı onayından sonra notuyla birlikte silinebilir.
 - Exaroton ve Aternos resmî API'leri dünya yedeği indirmeyi sağlamadığından barındırılan sunucuların yedekleri kendi resmî web panellerinden yönetilir.
 
 ## Uzaktan erişim nasıl kullanılır?
 
-1. **NextGen → Uzaktan Erişim** bölümünde kullanıcı adı, en az 10 karakterli parola ve rol seçerek kullanıcı oluştur.
+1. **Araçlar → Uzaktan Erişim** bölümünde kullanıcı adı, en az 10 karakterli parola ve rol seçerek kullanıcı oluştur.
 2. Yalnız bu bilgisayardan kullanacaksan LAN kutusunu kapalı bırak. Telefondan kullanacaksan telefonu aynı Wi-Fi'a bağla ve **Yerel ağdaki telefonlara aç** seçeneğini işaretle.
 3. **Uzaktan Erişimi Başlat** düğmesine bas. Aynı bilgisayarda **Tarayıcıda Aç**, telefonda ise ekranda gösterilen adres kullanılır.
 4. Tarayıcının giriş penceresine oluşturduğun kullanıcı adı ve parolayı yaz.
@@ -123,12 +146,16 @@ Exaroton seçiliyken canlı durum, ayrılmış RAM, oyuncular, konsol analizi, g
 
 Harita, ek bir Minecraft eklentisi gerektirmeyen canlı koordinat/radar görünümüdür. Dünya bloklarının ve yapıların görsel döşemelerini göstermek için ayrıca BlueMap veya Dynmap gibi bir sunucu eklentisi gerekir.
 
-Canlı Harita'ya ihtiyaç yoksa **NextGen → Dil & Görünüm → Performans Özellikleri** bölümünden kapatılabilir. Bu ayar yalnızca sekmeyi gizlemez: konum sorgusunu, çizim zamanlayıcısını ve Exaroton dinleyicilerini tamamen durdurur; tercih sonraki açılışta korunur.
+Canlı Harita'ya ihtiyaç yoksa **Ayarlar → Performans Özellikleri** bölümünden kapatılabilir. Bu ayar yalnızca sekmeyi gizlemez: konum sorgusunu, çizim zamanlayıcısını ve Exaroton dinleyicilerini tamamen durdurur; tercih sonraki açılışta korunur.
 
 ## Çalıştırma
 
 Gereksinimler: Java 17 ve Maven.
 
+```bash
+cd /home/hasan/Documents/Codex/2026-08-15/me/AeroMCServerPanel
+mvn javafx:run
+```
 
 İlk açılışta **Dosya Seç** ile sunucunun `server.jar`, Paper veya Fabric sunucu JAR dosyasını seç. Panel JAR'ın bulunduğu klasörü sunucu klasörü olarak kullanır.
 

@@ -28,7 +28,7 @@
 .server-provider-tabs .tab:selected .tab-label { -fx-text-fill: white; }
 .pro-provider-bar { -fx-padding: 10 18; -fx-background-color: #111d27; -fx-border-color: transparent transparent #263642 transparent; }
 .control-workspace { -fx-background-color: #0d141b; }
-.control-menu { -fx-padding: 18 10 18 18; -fx-pref-width: 178; -fx-background-color: #111a22; -fx-border-color: transparent #263642 transparent transparent; }
+.control-menu { -fx-padding: 18 10 18 18; -fx-pref-width: 225; -fx-background-color: #111a22; -fx-border-color: transparent #263642 transparent transparent; }
 .control-menu-button { -fx-alignment: CENTER-LEFT; -fx-padding: 11 13; -fx-background-color: transparent; -fx-text-fill: #91a6b2; -fx-background-radius: 7; -fx-cursor: hand; -fx-font-weight: bold; }
 .control-menu-button:hover { -fx-background-color: #182a35; -fx-text-fill: #dce8ee; }
 .control-menu-button:selected { -fx-background-color: #245e78; -fx-text-fill: white; }
@@ -36,7 +36,7 @@
 .section-title { -fx-text-fill: #78909f; -fx-font-size: 10px; -fx-font-weight: bold; }
 .label { -fx-text-fill: #dce8ee; }.muted { -fx-text-fill: #7f949f; }
 .metric { -fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #55b9ea; }
-.health-card, .crisis-card { -fx-min-height: 150; }
+.health-card, .crisis-card { -fx-min-height: 225; }
 .health-state { -fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #dce8ee; }
 .health-progress { -fx-pref-height: 9; }
 .health-progress .track { -fx-background-color: #0b141b; -fx-background-radius: 8; }
@@ -92,6 +92,8 @@
 .default-color1.chart-series-line { -fx-stroke: #60d394; }
 .map-surface { -fx-background-color: #091016; -fx-border-color: #2a3b47; -fx-border-radius: 8; -fx-background-radius: 8; -fx-min-width: 420; -fx-min-height: 360; }
 .dashboard-scroll, .dashboard-scroll > .viewport { -fx-background-color: transparent; }
+.control-scroll, .control-scroll > .viewport { -fx-background-color: #0d141b; -fx-border-color: transparent; }
+.control-scroll > .corner { -fx-background-color: #0d141b; }
 .server-card { -fx-padding: 15; -fx-background-color: #15212b; -fx-background-radius: 10; -fx-border-color: #263642; -fx-border-radius: 10; }
 .server-card-title { -fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #e4eef3; }
 .metric-small { -fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #55b9ea; }

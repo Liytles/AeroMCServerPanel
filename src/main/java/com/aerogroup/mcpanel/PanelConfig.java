@@ -13,6 +13,10 @@ public final class PanelConfig {
     private final LinkedHashSet<Path> knownServerJars = new LinkedHashSet<>();
     private int memoryMb = 2048;
     private boolean liveMapEnabled = true;
+    private boolean automaticCredentialVaultEnabled;
+    private boolean exarotonReadinessCheckEnabled = true;
+    private boolean automaticUpdateCheckEnabled = true;
+    private String updateChannel = "stable";
     private boolean crisisModeEnabled;
     private double crisisTpsThreshold = 16.0;
     private double crisisRamThreshold = 90.0;
@@ -29,6 +33,10 @@ public final class PanelConfig {
             for (int i = 0; i < knownCount; i++) { String known = values.getProperty("knownServer." + i, "").trim(); if (!known.isEmpty()) config.knownServerJars.add(Path.of(known).toAbsolutePath().normalize()); }
             config.memoryMb = Integer.parseInt(values.getProperty("memoryMb", "2048"));
             config.liveMapEnabled = Boolean.parseBoolean(values.getProperty("liveMapEnabled", "true"));
+            config.automaticCredentialVaultEnabled = Boolean.parseBoolean(values.getProperty("automaticCredentialVaultEnabled", "false"));
+            config.exarotonReadinessCheckEnabled = Boolean.parseBoolean(values.getProperty("exarotonReadinessCheckEnabled", "true"));
+            config.automaticUpdateCheckEnabled = Boolean.parseBoolean(values.getProperty("automaticUpdateCheckEnabled", "true"));
+            config.updateChannel = "beta".equalsIgnoreCase(values.getProperty("updateChannel", "stable")) ? "beta" : "stable";
             config.crisisModeEnabled = Boolean.parseBoolean(values.getProperty("crisisModeEnabled", "false"));
             config.crisisTpsThreshold = Double.parseDouble(values.getProperty("crisisTpsThreshold", "16.0"));
             config.crisisRamThreshold = Double.parseDouble(values.getProperty("crisisRamThreshold", "90.0"));
@@ -43,6 +51,10 @@ public final class PanelConfig {
         for (Path known : knownServerJars) values.setProperty("knownServer." + knownIndex++, known.toString());
         values.setProperty("memoryMb", Integer.toString(memoryMb));
         values.setProperty("liveMapEnabled", Boolean.toString(liveMapEnabled));
+        values.setProperty("automaticCredentialVaultEnabled", Boolean.toString(automaticCredentialVaultEnabled));
+        values.setProperty("exarotonReadinessCheckEnabled", Boolean.toString(exarotonReadinessCheckEnabled));
+        values.setProperty("automaticUpdateCheckEnabled", Boolean.toString(automaticUpdateCheckEnabled));
+        values.setProperty("updateChannel", updateChannel);
         values.setProperty("crisisModeEnabled", Boolean.toString(crisisModeEnabled));
         values.setProperty("crisisTpsThreshold", Double.toString(crisisTpsThreshold));
         values.setProperty("crisisRamThreshold", Double.toString(crisisRamThreshold));
@@ -55,6 +67,14 @@ public final class PanelConfig {
     public void setMemoryMb(int value) { memoryMb = value; }
     public boolean isLiveMapEnabled() { return liveMapEnabled; }
     public void setLiveMapEnabled(boolean value) { liveMapEnabled = value; }
+    public boolean isAutomaticCredentialVaultEnabled() { return automaticCredentialVaultEnabled; }
+    public void setAutomaticCredentialVaultEnabled(boolean value) { automaticCredentialVaultEnabled = value; }
+    public boolean isExarotonReadinessCheckEnabled() { return exarotonReadinessCheckEnabled; }
+    public void setExarotonReadinessCheckEnabled(boolean value) { exarotonReadinessCheckEnabled = value; }
+    public boolean isAutomaticUpdateCheckEnabled() { return automaticUpdateCheckEnabled; }
+    public void setAutomaticUpdateCheckEnabled(boolean value) { automaticUpdateCheckEnabled = value; }
+    public String getUpdateChannel() { return updateChannel; }
+    public void setUpdateChannel(String value) { updateChannel = "beta".equalsIgnoreCase(value) ? "beta" : "stable"; }
     public boolean isCrisisModeEnabled() { return crisisModeEnabled; }
     public void setCrisisModeEnabled(boolean value) { crisisModeEnabled = value; }
     public double getCrisisTpsThreshold() { return crisisTpsThreshold; }

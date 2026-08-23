@@ -13,6 +13,15 @@ trap cleanup EXIT
 CLASSPATH="target/classes:target/package-input/lib/*"
 javac -encoding UTF-8 -cp "$CLASSPATH" -d "$TEST_CLASSES" \
   work/HealthFeaturesSmoke.java \
+  work/AternosStatusSmoke.java \
+  work/ExarotonReadinessSmoke.java \
+  work/ExarotonCreditSmoke.java \
+  work/ExarotonFleetSmoke.java \
+  work/ExarotonAutomationSmoke.java \
+  work/DiscordNotificationSmoke.java \
+  work/DeviceCredentialSmoke.java \
+  work/UpdateServiceSmoke.java \
+  work/PreflightSmoke.java \
   work/LanguageFeatureSmoke.java \
   work/MapParserSmoke.java \
   work/ModCenterSmoke.java \
@@ -20,6 +29,15 @@ javac -encoding UTF-8 -cp "$CLASSPATH" -d "$TEST_CLASSES" \
   work/SyncBackupSecuritySmoke.java
 
 for TEST in \
+  AternosStatusSmoke \
+  ExarotonReadinessSmoke \
+  ExarotonCreditSmoke \
+  ExarotonFleetSmoke \
+  ExarotonAutomationSmoke \
+  DiscordNotificationSmoke \
+  DeviceCredentialSmoke \
+  UpdateServiceSmoke \
+  PreflightSmoke \
   HealthFeaturesSmoke \
   LanguageFeatureSmoke \
   MapParserSmoke \

@@ -8,7 +8,6 @@ import javafx.collections.*;
 import javafx.concurrent.Task;
 import javafx.geometry.*;
 import javafx.scene.Node;
-import javafx.scene.Parent;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.*;
@@ -24,11 +23,10 @@ import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 import java.util.regex.*;
 import java.util.zip.*;
 
-/** Kurulum, uyumluluk, yedek, optimizasyon, uzaktan erişim ve dil merkezi. */
+/** Kurulum, uyumluluk, yedek, optimizasyon ve uzaktan erişim araçları. */
 public final class NextGenPane {
     private static final String USER_AGENT = "AeroMC-Server-Panel/2.0 (desktop app; https://openai.com)";
     private final ServerManager manager;
@@ -36,7 +34,6 @@ public final class NextGenPane {
     private final PanelConfig config;
     private final HostServices hostServices;
     private final BiConsumer<Path, Integer> installedJar;
-    private final Consumer<Boolean> liveMapToggle;
     private final RemoteControlService remote;
     private final HttpClient http = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).connectTimeout(java.time.Duration.ofSeconds(15)).build();
     private final TextField installFolder = new TextField(), gameVersion = new TextField("1.20.4");
@@ -56,12 +53,12 @@ public final class NextGenPane {
     private final ObservableList<RemoteControlService.AuditEntry> audit = FXCollections.observableArrayList();
     private final Label remoteState = new Label("Kapalı");
 
-    public NextGenPane(ServerManager manager, ExarotonPane exaroton, PanelConfig config, HostServices hostServices, BiConsumer<Path, Integer> installedJar, Consumer<Boolean> liveMapToggle) {
-        this.manager = manager; this.exaroton = exaroton; this.config = config; this.hostServices = hostServices; this.installedJar = installedJar; this.liveMapToggle = liveMapToggle; this.remote = new RemoteControlService(manager, exaroton, config);
+    public NextGenPane(ServerManager manager, ExarotonPane exaroton, PanelConfig config, HostServices hostServices, BiConsumer<Path, Integer> installedJar) {
+        this.manager = manager; this.exaroton = exaroton; this.config = config; this.hostServices = hostServices; this.installedJar = installedJar; this.remote = new RemoteControlService(manager, exaroton, config);
     }
     public Node buildView() {
-        Tab setup = tab("Kurulum", setupView()), compat = tab("Uyumluluk", compatibilityView()), backup = tab("Yedekler", backupView()), optimization = tab("Optimizasyon", optimizationView()), access = tab("Uzaktan Erişim", remoteView()), settings = tab("Dil & Görünüm", settingsView());
-        TabPane tabs = new TabPane(setup, compat, backup, optimization, access, settings);
+        Tab setup = tab("Kurulum", setupView()), compat = tab("Uyumluluk", compatibilityView()), backup = tab("Yedekler", backupView()), optimization = tab("Optimizasyon", optimizationView()), access = tab("Uzaktan Erişim", remoteView());
+        TabPane tabs = new TabPane(setup, compat, backup, optimization, access);
         tabs.getStyleClass().add("inner-tabs"); tabs.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> { if (newTab == compat) refreshServerTargets(); if (newTab == backup) { refreshServerTargets(); refreshBackups(); } if (newTab == access) refreshSecurity(); }); return tabs;
     }
 
@@ -174,7 +171,7 @@ public final class NextGenPane {
         TextField username = new TextField(); username.setPromptText("Kullanıcı adı"); PasswordField password = new PasswordField(); password.setPromptText("En az 10 karakterli parola"); ComboBox<RemoteControlService.Role> role = new ComboBox<>(FXCollections.observableArrayList(RemoteControlService.Role.values())); role.getSelectionModel().select(RemoteControlService.Role.VIEWER); Button add = button("Kullanıcı Oluştur", "primary");
         ListView<String> userList = new ListView<>(users); Button remove = button("Seçileni Sil", "danger"); add.setOnAction(event -> { try { remote.createUser(username.getText(), password.getText().toCharArray(), role.getValue()); username.clear(); password.clear(); refreshSecurity(); } catch (Exception error) { error(error.getMessage()); } }); remove.setOnAction(event -> { String selected = userList.getSelectionModel().getSelectedItem(); if (selected != null) { remote.deleteUser(selected.split(" • ")[0]); refreshSecurity(); } });
         HBox userRow = new HBox(8, username, password, role, add, remove); HBox.setHgrow(username, Priority.ALWAYS); HBox.setHgrow(password, Priority.ALWAYS);
-        Label roles = new Label("VIEWER: yalnızca durumu görür  •  MODERATOR: mesaj, kick ve ban kullanır  •  ADMIN: başlatma, durdurma, yedek ve konsol dahil tam yetkilidir."); roles.setWrapText(true); roles.getStyleClass().add("muted"); userList.setPrefHeight(92);
+        Label roles = new Label("VIEWER: yalnızca durumu görür  •  MODERATOR: mesaj, kick ve ban kullanır  •  ADMIN: başlatma, durdurma, yedek ve konsol dahil tam yetkilidir."); roles.setWrapText(true); roles.getStyleClass().add("muted"); userList.setPrefHeight(92); userList.setMinHeight(92);
         Spinner<Integer> port = new Spinner<>(1024, 65535, 8765); CheckBox lan = new CheckBox("Yerel ağdaki telefonlara aç"); Button start = button("Uzaktan Erişimi Başlat", "primary"), stop = button("Durdur", "danger"), open = button("Tarayıcıda Aç", "secondary");
         start.setOnAction(event -> { if (remote.listUsers().isEmpty()) { error("Önce 1. adımdan en az bir kullanıcı oluştur."); return; } if (lan.isSelected() && !confirm("LAN erişimi yalnızca güvendiğin özel Wi-Fi ağında kullanılmalı. İnternete port yönlendirmesi yapma. Devam edilsin mi?")) return; try { remote.start(lan.isSelected(), port.getValue()); remoteState.setText(remote.getAddress()); refreshSecurity(); info("Uzaktan erişim hazır", lan.isSelected() ? "Telefonunu aynı Wi-Fi ağına bağla ve gösterilen adresi aç. Tarayıcı kullanıcı adı ve parola soracak." : "Bu bilgisayarda Tarayıcıda Aç düğmesini kullan. Tarayıcı kullanıcı adı ve parola soracak."); } catch (Exception error) { error(error.getMessage()); } }); stop.setOnAction(event -> { remote.stop(); remoteState.setText("Kapalı"); refreshSecurity(); }); open.setOnAction(event -> { if (!remote.isRunning()) { error("Önce uzaktan erişimi başlat."); return; } try { hostServices.showDocument(remote.getAddress()); } catch (Exception error) { error("Tarayıcı açılamadı: " + error.getMessage()); } }); remoteState.getStyleClass().add("remote-address");
         Button copy = button("Adresi Kopyala", "secondary"); copy.setOnAction(event -> { if (!remote.isRunning()) return; javafx.scene.input.ClipboardContent content = new javafx.scene.input.ClipboardContent(); content.putString(remote.getAddress()); javafx.scene.input.Clipboard.getSystemClipboard().setContent(content); });
@@ -184,21 +181,14 @@ public final class NextGenPane {
         TableView<RemoteControlService.AuditEntry> auditTable = new TableView<>(audit); auditTable.getColumns().add(auditColumn("Zaman", entry -> formatAuditTime(entry.time()))); auditTable.getColumns().add(auditColumn("Kullanıcı", RemoteControlService.AuditEntry::user)); auditTable.getColumns().add(auditColumn("Olay", entry -> friendlyAuditAction(entry.action()))); auditTable.getColumns().add(auditColumn("Hedef", RemoteControlService.AuditEntry::target)); auditTable.getColumns().add(auditColumn("Sonuç", entry -> friendlyAuditResult(entry.result()))); auditTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN); VBox.setVgrow(auditTable, Priority.ALWAYS);
         Button refresh = button("Günlüğü Yenile", "secondary"), clear = button("Günlüğü Temizle", "danger"); refresh.setOnAction(event -> refreshSecurity()); clear.setOnAction(event -> { if (!confirm("Güvenlik günlüğü temizlensin mi?")) return; try { remote.clearAudit(); refreshSecurity(); } catch (IOException error) { error(error.getMessage()); } });
         Label auditHelp = new Label("Bu günlük; kimin giriş denediğini, hangi komutu gönderdiğini ve işlemin başarılı mı reddedilmiş mi olduğunu gösterir. Parolalar ve API anahtarları kaydedilmez. DENIED başarısız/yetkisiz giriş, RATE LIMIT ise 5 hatalı denemeden sonra geçici engel demektir."); auditHelp.setWrapText(true); auditHelp.getStyleClass().add("muted");
-        VBox first = card("1 • UZAKTAN ERİŞİM KULLANICISI OLUŞTUR", roles, userRow, userList); VBox second = card("2 • BAĞLANTIYI BAŞLAT", connectionHelp, service, remoteState); VBox third = card("3 • GÜVENLİK GÜNLÜĞÜ", auditHelp, new HBox(8, refresh, clear), auditTable); VBox.setVgrow(third, Priority.ALWAYS);
-        VBox page = page(first, second, third); VBox.setVgrow(third, Priority.ALWAYS); return page;
+        VBox first = card("1 • UZAKTAN ERİŞİM KULLANICISI OLUŞTUR", roles, userRow, userList); first.setMinHeight(200); VBox second = card("2 • BAĞLANTIYI BAŞLAT", connectionHelp, service, remoteState); second.setMinHeight(160); VBox third = card("3 • GÜVENLİK GÜNLÜĞÜ", auditHelp, new HBox(8, refresh, clear), auditTable); VBox.setVgrow(third, Priority.ALWAYS);
+        VBox page = page(first, second, third); VBox.setVgrow(first, Priority.NEVER); VBox.setVgrow(second, Priority.NEVER); VBox.setVgrow(third, Priority.ALWAYS); return scrollable(page);
     }
     private void refreshSecurity() { users.setAll(remote.listUsers().entrySet().stream().map(e -> e.getKey() + " • " + e.getValue()).toList()); audit.setAll(remote.readAuditEntries(200)); remoteState.setText(remote.isRunning() ? "Açılacak adres: " + remote.getAddress() : "Uzaktan erişim kapalı"); }
     private TableColumn<RemoteControlService.AuditEntry, String> auditColumn(String title, java.util.function.Function<RemoteControlService.AuditEntry, String> value) { TableColumn<RemoteControlService.AuditEntry, String> column = new TableColumn<>(title); column.setCellValueFactory(row -> new ReadOnlyStringWrapper(value.apply(row.getValue()))); return column; }
     private String formatAuditTime(String value) { try { return LocalDateTime.parse(value).format(DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss")); } catch (Exception ignored) { return value; } }
     private String friendlyAuditAction(String action) { return switch (action) { case "remote-start" -> "Uzaktan erişim açıldı"; case "remote-stop" -> "Uzaktan erişim kapandı"; case "user-create" -> "Kullanıcı oluşturuldu"; case "user-delete" -> "Kullanıcı silindi"; case "login-failed" -> "Hatalı giriş"; case "login-blocked" -> "Giriş geçici engellendi"; case "audit-cleared" -> "Günlük temizlendi"; case "start" -> "Sunucu başlatma"; case "stop" -> "Sunucu durdurma"; case "restart" -> "Sunucu yeniden başlatma"; case "backup" -> "Yedek alma"; case "say" -> "Duyuru"; case "kick" -> "Oyuncu atma"; case "ban" -> "Oyuncu yasaklama"; case "command" -> "Konsol komutu"; default -> action; }; }
     private String friendlyAuditResult(String result) { if ("OK".equals(result)) return "Başarılı"; if ("DENIED".equals(result)) return "Reddedildi"; if ("RATE_LIMIT".equals(result)) return "Geçici engel"; return result.startsWith("ERROR") ? "Hata: " + result.substring(5).strip() : result; }
-
-    private Node settingsView() {
-        ComboBox<String> language = new ComboBox<>(FXCollections.observableArrayList("Türkçe", "İngilizce")); language.getSelectionModel().select("en".equals(LanguageManager.load()) ? "İngilizce" : "Türkçe"); Button apply = button("Dili Uygula", "primary"); apply.setOnAction(event -> { String code = language.getValue().equals("İngilizce") ? "en" : "tr"; Parent root = language.getScene().getRoot(); LanguageManager.apply(root, code); });
-        Label note = new Label("Bütün ana ekranlar, düğmeler, alan ipuçları ve değişen durum metinleri anında çevrilir; seçim sonraki açılışta korunur."); note.setWrapText(true); note.getStyleClass().add("muted");
-        CheckBox liveMap = new CheckBox("Canlı Harita özelliğini etkinleştir"); liveMap.setSelected(config.isLiveMapEnabled()); Label mapNote = new Label("Kapatıldığında harita sekmesi, 5 saniyelik konum sorguları, çizim zamanlayıcısı ve Exaroton konsol dinleyicileri tamamen durdurulur. Değişiklik anında uygulanır."); mapNote.setWrapText(true); mapNote.getStyleClass().add("muted"); liveMap.setOnAction(event -> { config.setLiveMapEnabled(liveMap.isSelected()); try { config.save(); liveMapToggle.accept(liveMap.isSelected()); } catch (IOException error) { liveMap.setSelected(!liveMap.isSelected()); error(error.getMessage()); } });
-        return page(card("DİL & GÖRÜNÜM", new HBox(8, language, apply), note), card("PERFORMANS ÖZELLİKLERİ", liveMap, mapNote));
-    }
 
     public void shutdown() { remote.stop(); }
     private Path serverProperties() { Path root = manager.getServerFolder(); if (root == null) { error("Önce yerel server.jar seç."); return null; } Path file = root.resolve("server.properties"); if (!Files.exists(file)) { error("server.properties bulunamadı."); return null; } return file; }
@@ -210,7 +200,8 @@ public final class NextGenPane {
     private String encode(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8); }
     private long modifiedValue(Path path) { try { return Files.getLastModifiedTime(path).toMillis(); } catch (IOException error) { return 0; } }
     private Tab tab(String title, Node content) { Tab tab = new Tab(title, content); tab.setClosable(false); return tab; }
-    private VBox page(Node... nodes) { VBox page = new VBox(14, nodes); page.setPadding(new Insets(18)); for (Node node : nodes) VBox.setVgrow(node, Priority.ALWAYS); return page; }
+    private VBox page(Node... nodes) { VBox page = new VBox(14, nodes); page.setPadding(new Insets(18)); return page; }
+    private ScrollPane scrollable(Node content) { ScrollPane scroll = new ScrollPane(content); scroll.setFitToWidth(true); scroll.setFitToHeight(false); scroll.getStyleClass().add("control-scroll"); return scroll; }
     private VBox card(String title, Node... nodes) { Label label = new Label(title); label.getStyleClass().add("section-title"); VBox card = new VBox(11, label); card.getChildren().addAll(nodes); card.getStyleClass().add("card"); return card; }
     private Button button(String text, String style) { Button button = new Button(text); button.getStyleClass().add(style); return button; }
     private void addField(GridPane grid, int column, String title, Node field) { VBox box = new VBox(4, new Label(title), field); grid.add(box, column, 0); GridPane.setHgrow(box, Priority.ALWAYS); }
