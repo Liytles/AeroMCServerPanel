@@ -7,7 +7,7 @@ on:
       - "v*"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   linux:
@@ -75,3 +75,36 @@ jobs:
           name: AeroMC-macOS
           path: release/macos/*
           if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows, macos]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v7
+        with:
+          path: release-assets
+      - name: Validate version and release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          POM_VERSION="$(awk '/<version>/{line=$0; sub(/.*<version>/,"",line); sub(/<\/version>.*/,"",line); print line; exit}' pom.xml)"
+          test "$TAG_VERSION" = "$POM_VERSION" || { echo "Tag v$TAG_VERSION ile pom.xml $POM_VERSION eşleşmiyor." >&2; exit 1; }
+          mapfile -t INSTALLERS < <(find release-assets -type f \( -name '*.exe' -o -name '*.deb' -o -name '*.dmg' \) -print | sort)
+          test "${#INSTALLERS[@]}" -eq 3 || { echo "Üç platform kurucusu bulunamadı." >&2; exit 1; }
+          for INSTALLER in "${INSTALLERS[@]}"; do test -f "$INSTALLER.sha256" || { echo "$INSTALLER.sha256 eksik." >&2; exit 1; }; done
+      - name: Create or update GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mapfile -t ASSETS < <(find release-assets -type f \( -name '*.exe' -o -name '*.deb' -o -name '*.dmg' -o -name '*.exe.sha256' -o -name '*.deb.sha256' -o -name '*.dmg.sha256' \) -print | sort)
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${ASSETS[@]}" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" --verify-tag --generate-notes --title "AeroMC $GITHUB_REF_NAME"
+          fi
