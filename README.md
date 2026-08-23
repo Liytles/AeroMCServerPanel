@@ -165,9 +165,9 @@ Oyuncu ve sunucu seçenekleri için **Yönetim** sekmesini aç. Yerel işlemlerd
 
 Yayın paketleri kendi Java çalışma ortamını içerir; uygulamayı kullanacak kişinin ayrıca Java veya Maven kurmasına gerek yoktur.
 
-- **Windows 10/11:** `AeroMC-3.0.0.exe` dosyasına çift tıkla ve kurulum sihirbazını tamamla.
-- **Ubuntu/Debian Linux:** `aeromc_3.0.0-1_amd64.deb` dosyasına çift tıkla veya paket yöneticisiyle kur.
-- **macOS:** `AeroMC-3.0.0.dmg` dosyasını aç ve AeroMC'yi Applications klasörüne taşı.
+- **Windows 10/11:** `AeroMC-3.0.1.exe` dosyasına çift tıkla ve kurulum sihirbazını tamamla.
+- **Ubuntu/Debian Linux:** `aeromc_3.0.1-1_amd64.deb` dosyasına çift tıkla veya paket yöneticisiyle kur.
+- **macOS:** `AeroMC-3.0.1.dmg` dosyasını aç ve AeroMC'yi Applications klasörüne taşı.
 
 İlk dağıtımlar imzasızdır. Bu nedenle Windows SmartScreen veya macOS Gatekeeper ilk açılışta yayıncı uyarısı gösterebilir. Herkese açık üretim yayını öncesinde Windows Authenticode sertifikası ile imzalama ve Apple Developer ID ile imzalama/noter onayı yapılmalıdır.
 

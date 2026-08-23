@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 "$ROOT_DIR/scripts/prepare-package.sh"
-VERSION="$(awk '/<version>/{line=$0; sub(/.*<version>/,"",line); sub(/<\\/version>.*/,"",line); print line; exit}' "$ROOT_DIR/pom.xml")"
+VERSION="$(sed -n 's:.*<version>\([^<]*\)</version>.*:\1:p' "$ROOT_DIR/pom.xml" | head -n 1)"
 test -n "$VERSION"
 
 OUTPUT_DIR="$ROOT_DIR/release/macos"
