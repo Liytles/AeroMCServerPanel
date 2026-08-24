@@ -5,7 +5,8 @@
 - [ ] `mvn clean package` succeeds with no compilation errors.
 - [ ] Linux `.deb`, Windows `.exe`, and macOS `.dmg` workflow jobs succeed.
 - [ ] Set a real public `AEROMC_MAINTAINER_EMAIL` for the Debian package.
-- [ ] Package filename and application title show version 3.0.2.
+- [ ] Package filename and application title show version 3.0.3.
+- [ ] Installer shows the current bilingual `INSTALLER-EULA.txt`, including the official Minecraft EULA and Usage Guidelines links.
 - [ ] Installed runtime contains `bin/java` (`java.exe` on Windows) and a local test server starts from the installed application.
 - [ ] The packaged app starts without a separately installed Java runtime.
 
@@ -25,4 +26,4 @@
 - [ ] Test remote access with LAN disabled by default and no router port forwarding.
 - [ ] Add Windows Authenticode signing and macOS Developer ID/notarization credentials.
 - [ ] Scan final installers and publish SHA-256 checksums.
-- [ ] Publish license, third-party notices, version notes, and known limitations.
+- [ ] Publish the Turkish/English README, license, third-party notices, bilingual version notes, and known limitations.

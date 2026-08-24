@@ -7,6 +7,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.regex.*;
+import java.util.function.Supplier;
 import java.util.zip.*;
 
 /** Minecraft sunucu işlemini ve canlı konsol akışını yönetir. */
@@ -18,26 +19,28 @@ public final class ServerManager {
     }
     private static final Pattern PLAYER_LIST = Pattern.compile("There are \\d+ of a max of \\d+ players online:\\s*(.*)");
     private final Listener listener;
+    private final Supplier<Path> preferredJava;
     private final ExecutorService io = Executors.newCachedThreadPool(r -> { Thread t = new Thread(r, "aeromc-io"); t.setDaemon(true); return t; });
     private Process process;
     private BufferedWriter console;
     private Path serverFolder;
 
-    public ServerManager(Listener listener) { this.listener = listener; }
+    public ServerManager(Listener listener) { this(listener, () -> null); }
+    public ServerManager(Listener listener, PanelConfig config) { this(listener, config == null ? () -> null : config::getJavaExecutable); }
+    private ServerManager(Listener listener, Supplier<Path> preferredJava) { this.listener = listener; this.preferredJava = preferredJava; }
     public synchronized boolean isRunning() { return process != null && process.isAlive(); }
     public synchronized Path getServerFolder() { return serverFolder; }
     public synchronized long getProcessId() { return isRunning() ? process.pid() : -1L; }
     public synchronized void configure(Path jar) {
-        if (jar != null && Files.isRegularFile(jar)) serverFolder = jar.toAbsolutePath().getParent();
+        try { if (jar != null) serverFolder = SafePathGuard.serverJar(jar).getParent(); } catch (IOException ignored) { serverFolder = null; }
     }
 
     public synchronized void start(Path jar, int memoryMb) throws IOException {
         if (isRunning()) throw new IllegalStateException("Sunucu zaten çalışıyor.");
-        if (jar == null || !Files.isRegularFile(jar)) throw new FileNotFoundException("Geçerli bir server.jar seçilmedi.");
-        configure(jar);
-        JavaRuntimeResolver.RuntimeInfo runtime = JavaRuntimeResolver.resolve();
+        Path safeJar = SafePathGuard.serverJar(jar); serverFolder = safeJar.getParent();
+        JavaRuntimeResolver.RuntimeInfo runtime = JavaRuntimeResolver.resolve(preferredJava.get());
         listener.onConsole("[Panel] Minecraft Java " + runtime.feature() + " kullanılıyor: " + runtime.executable() + " (" + runtime.source() + ")");
-        ProcessBuilder builder = new ProcessBuilder(runtime.executable().toString(), "-Xms" + Math.max(512, memoryMb / 2) + "M", "-Xmx" + memoryMb + "M", "-jar", jar.getFileName().toString(), "nogui");
+        ProcessBuilder builder = new ProcessBuilder(runtime.executable().toString(), "-Xms" + Math.max(512, memoryMb / 2) + "M", "-Xmx" + memoryMb + "M", "-jar", safeJar.getFileName().toString(), "nogui");
         builder.directory(serverFolder.toFile()).redirectErrorStream(true);
         Process startedProcess = builder.start();
         process = startedProcess;
@@ -102,26 +105,26 @@ public final class ServerManager {
         if (serverFolder == null) throw new IOException("Önce bir sunucu başlatılmalı.");
         boolean live = isRunning();
         if (live) { command("save-off"); command("save-all flush"); Thread.sleep(1200); }
-        Path backupFolder = serverFolder.resolve("backups");
+        Path safeRoot = serverFolder.toRealPath(LinkOption.NOFOLLOW_LINKS); Path backupFolder = SafePathGuard.resolve(safeRoot, "backups", true);
         Files.createDirectories(backupFolder);
         Path output = backupFolder.resolve("backup-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss")) + ".zip");
         List<String> names = List.of("world", "world_nether", "world_the_end", "server.properties", "whitelist.json", "ops.json", "banned-players.json", "banned-ips.json");
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(output))) {
             for (String name : names) {
-                Path source = serverFolder.resolve(name);
-                if (Files.isDirectory(source)) zipDirectory(source, zip);
-                else if (Files.isRegularFile(source)) addFile(source, zip);
+                Path source = SafePathGuard.resolve(safeRoot, name, true);
+                if (Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS)) zipDirectory(safeRoot, source, zip);
+                else if (Files.isRegularFile(source, LinkOption.NOFOLLOW_LINKS)) addFile(safeRoot, source, zip);
             }
         } finally { if (live && isRunning()) command("save-on"); }
         return output;
     }
-    private void zipDirectory(Path directory, ZipOutputStream zip) throws IOException {
+    private void zipDirectory(Path root, Path directory, ZipOutputStream zip) throws IOException {
         try (var paths = Files.walk(directory)) {
-            for (Path path : paths.filter(Files::isRegularFile).toList()) addFile(path, zip);
+            for (Path path : paths.filter(value -> Files.isRegularFile(value, LinkOption.NOFOLLOW_LINKS)).toList()) addFile(root, SafePathGuard.requireWithin(root, path, false), zip);
         }
     }
-    private void addFile(Path file, ZipOutputStream zip) throws IOException {
-        String relative = serverFolder.relativize(file).toString().replace('\\', '/');
+    private void addFile(Path root, Path file, ZipOutputStream zip) throws IOException {
+        String relative = root.relativize(file).toString().replace('\\', '/');
         zip.putNextEntry(new ZipEntry(relative)); Files.copy(file, zip); zip.closeEntry();
     }
     public void shutdown() { if (isRunning()) stop(); io.shutdown(); }

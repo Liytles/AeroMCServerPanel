@@ -1,0 +1,69 @@
+AeroMC Server Panel 3.0.3 - End User License Agreement
+Effective date: 24 August 2026
+
+ENGLISH
+
+1. This agreement covers installation and use of AeroMC Server Panel. By
+installing or using the application, you agree to these terms.
+
+2. AeroMC is provided for personal server administration by authorized users.
+The application and source code remain Copyright (c) 2026 The Aero Group. No
+right to redistribute, sell, sublicense, modify, or republish the application
+or source code is granted without separate written permission.
+
+3. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE AUTHORS ARE NOT LIABLE FOR
+DATA LOSS, SERVER INTERRUPTION, LOST CREDITS, OR OTHER DAMAGES ARISING FROM USE
+OF THE SOFTWARE. Keep verified backups before changing a production server.
+
+4. AeroMC can connect to third-party services and software. Their own terms,
+licenses, availability, and usage rules continue to apply. AeroMC is an
+independent project and is not affiliated with or endorsed by Mojang Studios,
+Microsoft, Aternos, Exaroton, Modrinth, PaperMC, Fabric, Forge, NeoForge,
+Spigot, Bukkit, or Purpur.
+
+5. Creating or running a Minecraft server requires your separate acceptance of
+the current Minecraft EULA. AeroMC does not replace that agreement. Read the
+current official text at https://aka.ms/MinecraftEULA and the usage guidelines
+at https://www.minecraft.net/usage-guidelines.
+
+6. Remote Access is intended for localhost or trusted private networks. Do not
+expose its local HTTP port directly to the internet. You are responsible for
+protecting credentials and limiting access to authorized people.
+
+7. Third-party components remain under their respective licenses. See
+THIRD-PARTY-NOTICES.md. The full project license is available in LICENSE.txt.
+
+TÜRKÇE
+
+1. Bu sözleşme AeroMC Server Panel'in kurulmasını ve kullanılmasını kapsar.
+Uygulamayı kurarak veya kullanarak bu koşulları kabul etmiş olursunuz.
+
+2. AeroMC, yetkili kullanıcıların kişisel sunucu yönetimi için sunulur.
+Uygulama ve kaynak kodunun hakları Copyright (c) 2026 The Aero Group'a aittir.
+Ayrı yazılı izin olmadan uygulamayı veya kaynak kodunu yeniden dağıtma, satma,
+alt lisanslama, değiştirme ya da yeniden yayımlama hakkı verilmez.
+
+3. YAZILIM, AÇIK VEYA ZIMNİ HİÇBİR GARANTİ VERİLMEKSİZİN "OLDUĞU GİBİ"
+SUNULUR. KANUNLARIN İZİN VERDİĞİ EN GENİŞ ÖLÇÜDE; YAZARLAR VERİ KAYBI,
+SUNUCU KESİNTİSİ, KREDİ KAYBI VEYA YAZILIMIN KULLANIMINDAN DOĞAN DİĞER
+ZARARLARDAN SORUMLU DEĞİLDİR. Üretim sunucusunda değişiklik yapmadan önce
+doğrulanmış yedek bulundurun.
+
+4. AeroMC üçüncü taraf servis ve yazılımlara bağlanabilir. Bu servislerin kendi
+koşulları, lisansları, erişilebilirlikleri ve kullanım kuralları geçerliliğini
+korur. AeroMC bağımsız bir projedir; Mojang Studios, Microsoft, Aternos,
+Exaroton, Modrinth, PaperMC, Fabric, Forge, NeoForge, Spigot, Bukkit veya Purpur
+ile bağlantılı değildir ve bu kuruluşlarca desteklenmemektedir.
+
+5. Minecraft sunucusu oluşturmak veya çalıştırmak, güncel Minecraft EULA'sını
+ayrıca kabul etmenizi gerektirir. AeroMC bu sözleşmenin yerine geçmez. Güncel
+resmî metni https://aka.ms/MinecraftEULA adresinden, kullanım kurallarını ise
+https://www.minecraft.net/usage-guidelines adresinden okuyun.
+
+6. Uzaktan Erişim yalnızca bu bilgisayarda veya güvenilen özel ağlarda kullanım
+içindir. Yerel HTTP portunu doğrudan internete açmayın. Kimlik bilgilerini
+korumak ve yalnızca yetkili kişilere erişim vermek sizin sorumluluğunuzdadır.
+
+7. Üçüncü taraf bileşenler kendi lisanslarına tabidir. Ayrıntılar için
+THIRD-PARTY-NOTICES.md, tam proje lisansı için LICENSE.txt dosyasına bakın.

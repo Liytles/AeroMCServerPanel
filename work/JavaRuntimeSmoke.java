@@ -14,6 +14,9 @@ public final class JavaRuntimeSmoke {
         JavaRuntimeResolver.RuntimeInfo runtime = JavaRuntimeResolver.resolve();
         assert Files.isRegularFile(runtime.executable());
         assert runtime.feature() >= 17;
+        JavaRuntimeResolver.RuntimeInfo selected = JavaRuntimeResolver.inspect(current);
+        assert selected.executable().equals(current.toAbsolutePath().normalize());
+        assert JavaRuntimeResolver.resolve(current).executable().equals(selected.executable());
         System.out.println("Java runtime smoke başarılı: Java " + runtime.feature() + " • " + runtime.executable());
     }
 }

@@ -29,7 +29,7 @@ jpackage \
   --icon "$ROOT_DIR/src/main/resources/icons/aeromc.png" \
   --jlink-options "--strip-debug --no-man-pages --no-header-files" \
   --java-options "-Dfile.encoding=UTF-8" \
-  --license-file "$ROOT_DIR/LICENSE.txt" \
+  --license-file "$ROOT_DIR/INSTALLER-EULA.txt" \
   --linux-package-name aeromc \
   --linux-deb-maintainer "$MAINTAINER_EMAIL" \
   --linux-menu-group Game \

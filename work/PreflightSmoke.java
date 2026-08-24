@@ -18,6 +18,9 @@ public final class PreflightSmoke {
             PreflightEngine.applySafeFixes(jar, before);
             PreflightEngine.Report after = PreflightEngine.inspect(jar, 2048);
             require(!after.hasCritical(), "safe fixes clear EULA critical issue");
+            String acceptedEula = Files.readString(root.resolve("eula.txt"));
+            require(acceptedEula.contains("eula=true"), "accepted EULA value");
+            require(acceptedEula.contains(MinecraftEula.EULA_URL), "current official EULA link is recorded");
             require(PreflightEngine.requiredJava("1.20.4") == 17, "Java 17 mapping");
             require(PreflightEngine.requiredJava("1.20.5") == 21, "Java 21 mapping");
             System.out.println("preflight-ok");

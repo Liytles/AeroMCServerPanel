@@ -44,13 +44,31 @@ public final class ServerHealthEngine {
 
     public static boolean shouldEnterCrisis(double tps, double ramPercent, int overloadBurst,
                                             double tpsThreshold, double ramThreshold) {
-        return Double.isFinite(tps) && tps < tpsThreshold
-                || Double.isFinite(ramPercent) && ramPercent >= ramThreshold
-                || overloadBurst >= 3;
+        return crisisSignal(tps, ramPercent, overloadBurst, tpsThreshold, ramThreshold).danger();
+    }
+
+    public static boolean shouldExitCrisis(double tps, double ramPercent, int overloadBurst,
+                                           double tpsThreshold, double ramThreshold) {
+        return crisisSignal(tps, ramPercent, overloadBurst, tpsThreshold, ramThreshold).recovered();
+    }
+
+    public static CrisisSignal crisisSignal(double tps, double ramPercent, int overloadBurst,
+                                             double tpsThreshold, double ramThreshold) {
+        List<String> reasons = new ArrayList<>();
+        if (Double.isFinite(tps) && tps < tpsThreshold) reasons.add("TPS " + one(tps) + " < " + one(tpsThreshold));
+        if (Double.isFinite(ramPercent) && ramPercent >= ramThreshold) reasons.add("RAM %" + whole(ramPercent) + " ≥ %" + whole(ramThreshold));
+        if (overloadBurst >= 3) reasons.add(overloadBurst + " aşırı yük uyarısı");
+        boolean hasMetric = Double.isFinite(tps) || Double.isFinite(ramPercent);
+        boolean recovered = hasMetric
+                && (!Double.isFinite(tps) || tps >= Math.min(20.0, tpsThreshold + 1.0))
+                && (!Double.isFinite(ramPercent) || ramPercent <= Math.max(0, ramThreshold - 5.0))
+                && overloadBurst == 0;
+        return new CrisisSignal(!reasons.isEmpty(), recovered, reasons.isEmpty() ? "Eşikler normal" : String.join(" • ", reasons));
     }
 
     private static String one(double value) { return String.format(java.util.Locale.US, "%.1f", value); }
     private static String whole(double value) { return Long.toString(Math.round(value)); }
 
     public record Snapshot(int score, String state, String tone, List<String> reasons) { }
+    public record CrisisSignal(boolean danger, boolean recovered, String reason) { }
 }

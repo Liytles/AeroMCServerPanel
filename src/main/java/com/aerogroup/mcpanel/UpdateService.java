@@ -84,6 +84,15 @@ public final class UpdateService {
         } finally { Files.deleteIfExists(temporary); }
     }
 
+    public void verifyDownloaded(ReleaseInfo release, Path installerFile) throws Exception {
+        Objects.requireNonNull(release); Asset installer = release.installer(), checksum = release.checksum();
+        if (installer == null || checksum == null || installerFile == null) throw new IOException("Doğrulanacak güncelleme paketi eksik.");
+        validateAsset(installer); validateAsset(checksum);
+        if (!Files.isRegularFile(installerFile) || Files.size(installerFile) != installer.size()) throw new IOException("İndirilen güncelleme paketinin boyutu değişmiş.");
+        String expected = fetchChecksum(checksum, installer.name()), actual = sha256(installerFile);
+        if (!expected.equalsIgnoreCase(actual)) throw new SecurityException("Güncelleme paketi açılmadan önceki SHA-256 doğrulamasını geçemedi.");
+    }
+
     static ReleaseInfo parseRelease(JsonObject release, String os, String arch) throws IOException {
         if (bool(release, "draft")) throw new IOException("Taslak yayın güncelleme olarak kullanılamaz.");
         String tag = string(release, "tag_name"), version = normalizeVersion(tag);

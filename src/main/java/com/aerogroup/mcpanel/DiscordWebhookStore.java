@@ -14,7 +14,7 @@ public final class DiscordWebhookStore {
     private static final SecureRandom RANDOM = new SecureRandom(); private static final int ITERATIONS = 210_000;
     private DiscordWebhookStore() { }
     public static boolean exists() { return Files.isRegularFile(FILE); }
-    public static void save(String value, char[] password) throws Exception { save(FILE, value, password); }
+    public static void save(String value, char[] password) throws Exception { Files.createDirectories(FILE.getParent()); try { Files.setPosixFilePermissions(FILE.getParent(), PosixFilePermissions.fromString("rwx------")); } catch (UnsupportedOperationException ignored) { } save(FILE, value, password); }
     public static String load(char[] password) throws Exception { return load(FILE, password); }
     public static void delete() throws Exception { Files.deleteIfExists(FILE); }
     static void save(Path file, String value, char[] password) throws Exception {

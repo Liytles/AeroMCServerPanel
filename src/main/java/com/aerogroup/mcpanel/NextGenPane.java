@@ -67,8 +67,11 @@ public final class NextGenPane {
         Button choose = button("Klasör Seç", "secondary"); choose.setOnAction(event -> chooseInstallFolder()); HBox folder = new HBox(8, installFolder, choose);
         GridPane options = new GridPane(); options.setHgap(12); options.setVgap(10); addField(options, 0, "Platform", platform); addField(options, 1, "Minecraft sürümü", gameVersion); addField(options, 2, "Şablon", template); addField(options, 3, "RAM (MB)", installRam);
         installProgress.setMaxWidth(Double.MAX_VALUE); installState.getStyleClass().add("muted"); Button install = button("SUNUCUYU HAZIRLA", "primary"); install.setOnAction(event -> installServer());
-        Label legal = new Label("İndirme yalnızca resmî PaperMC, Fabric veya Mojang sunucularından yapılır. Paper'ın yeni sürümleri daha yeni Java gerektirebilir."); legal.getStyleClass().add("muted");
-        VBox wizard = card("TEK TIK SUNUCU KURULUM SİHİRBAZI", folder, options, acceptEula, legal, installProgress, installState, install);
+        Hyperlink eulaLink = new Hyperlink("Güncel Minecraft EULA'sını Aç ↗"); eulaLink.setOnAction(event -> openLegalPage(MinecraftEula.EULA_URL));
+        Hyperlink usageLink = new Hyperlink("Minecraft Kullanım Kurallarını Aç ↗"); usageLink.setOnAction(event -> openLegalPage(MinecraftEula.USAGE_GUIDELINES_URL));
+        HBox legalLinks = new HBox(14, eulaLink, usageLink); legalLinks.setAlignment(Pos.CENTER_LEFT);
+        Label legal = new Label("EULA metni AeroMC içine kopyalanmaz; yukarıdaki resmî ve güncel Minecraft sayfasından okunur. Onay kutusu yalnızca sen işaretlediğinde eula.txt oluşturulur. İndirmeler resmî PaperMC, Fabric veya Mojang kaynaklarından yapılır."); legal.setWrapText(true); legal.getStyleClass().add("muted");
+        VBox wizard = card("TEK TIK SUNUCU KURULUM SİHİRBAZI", folder, options, legalLinks, acceptEula, legal, installProgress, installState, install);
         Label templates = new Label("Survival: dengeli varsayılanlar  •  SMP: whitelist ve topluluk ayarları  •  Creative: yaratıcı mod  •  SkyBlock Temeli: boş/flat dünya tabanı  •  Modlu: Fabric uyumlu temel"); templates.setWrapText(true); templates.getStyleClass().add("muted");
         return page(wizard, card("HAZIR SUNUCU ŞABLONLARI", templates));
     }
@@ -78,8 +81,12 @@ public final class NextGenPane {
         Path folder = Path.of(installFolder.getText()), jar = folder.resolve("server.jar"); String selectedPlatform = platform.getValue(), version = gameVersion.getText().trim(), selectedTemplate = template.getValue(); int ram = installRam.getValue();
         int requiredJava = requiredJava(version); int currentJava = Runtime.version().feature(); if (currentJava < requiredJava && !confirm("Bu sürüm yaklaşık Java " + requiredJava + " gerektiriyor; panel şu anda Java " + currentJava + " ile çalışıyor. Yine de indirilsin mi?")) return;
         installProgress.setProgress(-1); installState.setText("Resmî indirme adresi hazırlanıyor...");
-        Task<Path> task = new Task<>() { protected Path call() throws Exception { Files.createDirectories(folder); URI uri = downloadUri(selectedPlatform, version); download(uri, jar); writeTemplate(folder, selectedTemplate); writeServerMetadata(folder, selectedPlatform, version); Files.writeString(folder.resolve("eula.txt"), "eula=true" + System.lineSeparator(), StandardCharsets.UTF_8); writeLaunchers(folder, ram); return jar; } };
+        Task<Path> task = new Task<>() { protected Path call() throws Exception { Files.createDirectories(folder); URI uri = downloadUri(selectedPlatform, version); download(uri, jar); writeTemplate(folder, selectedTemplate); writeServerMetadata(folder, selectedPlatform, version); MinecraftEula.writeAccepted(folder); writeLaunchers(folder, ram); return jar; } };
         task.setOnSucceeded(event -> { installProgress.setProgress(1); installState.setText("Kurulum tamamlandı: " + jar); installedJar.accept(jar, ram); info("Sunucu hazır", "server.jar ve " + ram + " MB RAM ayarı seçildi. Yerel JAR sekmesinden başlatabilirsin."); }); task.setOnFailed(event -> { installProgress.setProgress(0); installState.setText("Kurulum başarısız"); error(rootMessage(task.getException())); }); run(task, "server-installer");
+    }
+    private void openLegalPage(String url) {
+        try { hostServices.showDocument(url); }
+        catch (RuntimeException error) { info("Bağlantı açılamadı", "Resmî adresi tarayıcıda açabilirsin:\n" + url); }
     }
     private URI downloadUri(String selectedPlatform, String version) throws Exception {
         return switch (selectedPlatform) { case "Paper" -> paperUri(version); case "Fabric" -> fabricUri(version); default -> vanillaUri(version); };

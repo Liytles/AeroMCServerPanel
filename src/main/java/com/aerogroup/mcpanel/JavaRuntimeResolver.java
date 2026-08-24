@@ -15,7 +15,11 @@ public final class JavaRuntimeResolver {
     private JavaRuntimeResolver() { }
 
     public static RuntimeInfo resolve() throws IOException {
-        LinkedHashMap<Path, String> candidates = candidates();
+        return resolve(null);
+    }
+
+    public static RuntimeInfo resolve(Path preferred) throws IOException {
+        LinkedHashMap<Path, String> candidates = candidates(preferred);
         for (Map.Entry<Path, String> candidate : candidates.entrySet()) {
             Path executable = candidate.getKey();
             if (!usable(executable)) continue;
@@ -23,6 +27,13 @@ public final class JavaRuntimeResolver {
             if (feature > 0) return new RuntimeInfo(executable.toAbsolutePath().normalize(), feature, candidate.getValue());
         }
         throw new IOException("Minecraft için kullanılabilir Java bulunamadı. AeroMC'yi yeniden kur veya AEROMC_JAVA/JAVA_HOME ile geçerli bir Java yolu belirt.");
+    }
+
+    public static RuntimeInfo inspect(Path executable) throws IOException {
+        if (!usable(executable)) throw new IOException("Seçilen Java çalıştırıcısı bulunamadı veya çalıştırılamıyor.");
+        int feature = probeFeature(executable);
+        if (feature <= 0) throw new IOException("Seçilen dosya geçerli bir Java çalıştırıcısı değil.");
+        return new RuntimeInfo(executable.toAbsolutePath().normalize(), feature, "Ayarlar'daki özel Java");
     }
 
     static Optional<Path> firstUsable(List<Path> candidates) {
@@ -39,9 +50,10 @@ public final class JavaRuntimeResolver {
         } catch (NumberFormatException ignored) { return 0; }
     }
 
-    private static LinkedHashMap<Path, String> candidates() {
+    private static LinkedHashMap<Path, String> candidates(Path preferred) {
         LinkedHashMap<Path, String> result = new LinkedHashMap<>();
         String command = executableName();
+        if (preferred != null) result.put(preferred, "Ayarlar'daki özel Java");
         addExplicit(result, System.getenv("AEROMC_JAVA"), "AEROMC_JAVA");
         addHome(result, System.getProperty("java.home"), command, "AeroMC gömülü Java");
         addHome(result, System.getenv("JAVA_HOME"), command, "JAVA_HOME");

@@ -19,6 +19,7 @@ if ($LASTEXITCODE -ne 0) { throw "Maven derlemesi başarısız." }
 
 Copy-Item -Force (Join-Path $RootDir "target\AeroMC.jar") (Join-Path $RootDir "target\package-input\AeroMC.jar")
 Copy-Item -Force (Join-Path $RootDir "LICENSE.txt") (Join-Path $RootDir "target\package-input\LICENSE.txt")
+Copy-Item -Force (Join-Path $RootDir "INSTALLER-EULA.txt") (Join-Path $RootDir "target\package-input\INSTALLER-EULA.txt")
 Copy-Item -Force (Join-Path $RootDir "THIRD-PARTY-NOTICES.md") (Join-Path $RootDir "target\package-input\THIRD-PARTY-NOTICES.md")
 [xml]$Pom = Get-Content (Join-Path $RootDir "pom.xml")
 $Version = $Pom.project.version
@@ -43,7 +44,7 @@ New-Item -ItemType Directory -Force $OutputDir | Out-Null
   --icon (Join-Path $RootDir "packaging\icons\aeromc.ico") `
   --jlink-options "--strip-debug --no-man-pages --no-header-files" `
   --java-options "-Dfile.encoding=UTF-8" `
-  --license-file (Join-Path $RootDir "LICENSE.txt") `
+  --license-file (Join-Path $RootDir "INSTALLER-EULA.txt") `
   --win-menu `
   --win-menu-group AeroMC `
   --win-shortcut `

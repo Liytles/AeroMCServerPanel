@@ -32,13 +32,13 @@ public final class ProToolsPane {
     private static final Path PLAYER_FILE = DATA.resolve("player-history.properties");
     private static final Path JOB_FILE = DATA.resolve("scheduled-jobs.properties");
     private static final Path EVENT_FILE = DATA.resolve("event-timeline.log");
+    private static final Path PERFORMANCE_FILE = DATA.resolve("performance-history.log");
     private static final Path DISCORD_SETTINGS_FILE = DATA.resolve("discord-notifications.properties");
     private static final Set<String> SAFE_FILES = Set.of("server.properties", "eula.txt", "whitelist.json", "ops.json", "banned-players.json", "banned-ips.json");
     private static final Pattern JOIN = Pattern.compile("(?:]: )?([A-Za-z0-9_]{1,16}) joined the game");
     private static final Pattern LEAVE = Pattern.compile("(?:]: )?([A-Za-z0-9_]{1,16}) left the game");
     private static final Pattern ADVANCEMENT = Pattern.compile("(?:]: )?([A-Za-z0-9_]{1,16}) has (?:made the advancement|completed the challenge|reached the goal)");
     private static final Pattern DEATH = Pattern.compile("(?:]: )?([A-Za-z0-9_]{1,16}) (?:died|was |fell |drowned|blew up|burned|hit the ground|starved|suffocated|withered|experienced kinetic energy|went up in flames|tried to swim in lava)", Pattern.CASE_INSENSITIVE);
-    private static final Pattern URL = Pattern.compile("https?://[^\\s]+", Pattern.CASE_INSENSITIVE);
 
     private final ServerManager manager;
     private final ExarotonPane exaroton;
@@ -52,6 +52,9 @@ public final class ProToolsPane {
     private final ObservableList<String> healthReasons = FXCollections.observableArrayList();
     private final ObservableList<String> events = FXCollections.observableArrayList();
     private final Deque<String> consoleHistory = new ArrayDeque<>();
+    private final IncidentContext incidentContext = new IncidentContext();
+    private final SmartThresholdAdvisor thresholdAdvisor = new SmartThresholdAdvisor(PERFORMANCE_FILE);
+    private final CrashLoopGuard crashLoopGuard = new CrashLoopGuard();
     private final ObservableList<PlayerProfile> playerRows = FXCollections.observableArrayList();
     private final Map<String, PlayerProfile> profiles = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     private final Set<String> onlinePlayers = new HashSet<>();
@@ -59,6 +62,7 @@ public final class ProToolsPane {
     private final ComboBox<String> scheduledAction = new ComboBox<>();
     private final Label cpuValue = metric("0%"), memoryValue = metric("0 MB"), uptimeValue = metric("Kapalı"), playerValue = metric("0"), latencyValue = metric("-");
     private final Label healthValue = metric("0 / 100"), healthState = new Label("Sunucu kapalı"), crisisState = new Label("Kriz Modu beklemede");
+    private final Label thresholdAdvice = new Label("Öneri için sunucuyu bir süre normal kullan");
     private final ProgressBar healthProgress = new ProgressBar(0);
     private final XYChart.Series<Number, Number> cpuSeries = new XYChart.Series<>(), memorySeries = new XYChart.Series<>();
     private final Timeline metrics = new Timeline(new KeyFrame(Duration.seconds(2), event -> samplePerformance()));
@@ -86,20 +90,31 @@ public final class ProToolsPane {
     private final CheckBox automaticCrisis = new CheckBox("Kriz Modunu otomatik tetikle");
     private final Spinner<Double> crisisTps;
     private final Spinner<Integer> crisisRam;
+    private final Spinner<Integer> crisisTriggerSeconds;
+    private final Spinner<Integer> crisisRecoverySeconds;
+    private final Spinner<Integer> crisisCooldownSeconds;
+    private final ComboBox<String> sparkDuration = new ComboBox<>(FXCollections.observableArrayList("Hızlı • 60 saniye", "Normal • 3 dakika", "Detaylı • 5 dakika"));
+    private final Label sparkState = new Label("1. Sunucuyu aç  •  2. Süreyi seç  •  3. Analizi başlat");
+    private Button sparkStartButton, sparkOpenButton;
+    private final Timeline sparkCountdown = new Timeline(new KeyFrame(Duration.seconds(1), event -> updateSparkCountdown()));
     private final VBox achievementPreview = new VBox(10);
     private long lastPid = -1, lastCpuNanos = -1, lastSampleNanos = -1, sampleIndex;
     private int currentMemoryMb;
     private boolean memoryWarned, autoRestarting;
-    private boolean serverOnline, crisisActive, latencyProbeRunning;
+    private boolean serverOnline, crisisActive, crisisManual, crisisTransitioning, crisisNeedsMetricsForRecovery, latencyProbeRunning;
     private String crisisProvider;
-    private int recentCrashes, overloadWarnings, overloadBurst, unhealthySamples, healthySamples;
+    private int recentCrashes, overloadWarnings, overloadBurst;
+    private Instant crisisDangerSince, crisisRecoverySince, crisisLastExit = Instant.EPOCH, lastOverloadWarningAt;
     private double currentTps = Double.NaN, currentRamPercent = Double.NaN, currentCpuPercent = Double.NaN, currentLatencyMs = Double.NaN;
     private final Map<String, Object> crisisOriginalRemote = new LinkedHashMap<>();
     private final Map<String, String> crisisOriginalLocal = new LinkedHashMap<>();
     private ExarotonPane.ProSnapshot remoteSnapshot;
     private String lastRemoteStatus;
+    private Boolean lastRemoteOnline;
     private boolean remoteMetricsReceived;
-    private String latestSparkReport;
+    private volatile String latestSparkReport;
+    private boolean sparkProfileRunning;
+    private Instant sparkDeadline;
     private VBox localAutomationCard;
     private final Runnable openExarotonAutomation;
 
@@ -108,7 +123,10 @@ public final class ProToolsPane {
         this.modCenterPane = new ModCenterPane(manager, exaroton, config, hostServices);
         crisisTps = new Spinner<>(10.0, 19.5, Math.max(10.0, Math.min(19.5, config.getCrisisTpsThreshold())), 0.5);
         crisisRam = new Spinner<>(70, 99, Math.max(70, Math.min(99, (int) config.getCrisisRamThreshold())), 1);
-        loadPlayers(); loadJobs(); loadEvents(); loadDiscordPreferences(); metrics.setCycleCount(Animation.INDEFINITE); scheduler.setCycleCount(Animation.INDEFINITE);
+        crisisTriggerSeconds = new Spinner<>(4, 60, config.getCrisisTriggerSeconds(), 2);
+        crisisRecoverySeconds = new Spinner<>(10, 180, config.getCrisisRecoverySeconds(), 5);
+        crisisCooldownSeconds = new Spinner<>(0, 600, config.getCrisisCooldownSeconds(), 15);
+        loadPlayers(); loadJobs(); loadEvents(); loadDiscordPreferences(); metrics.setCycleCount(Animation.INDEFINITE); scheduler.setCycleCount(Animation.INDEFINITE); sparkCountdown.setCycleCount(Animation.INDEFINITE);
         exaroton.addProConsoleListener(this::onRemoteConsole);
         exaroton.addProSnapshotListener(snapshot -> Platform.runLater(() -> acceptRemoteSnapshot(snapshot)));
         exaroton.addProMetricsListener(metrics -> Platform.runLater(() -> acceptRemoteMetrics(metrics)));
@@ -131,7 +149,7 @@ public final class ProToolsPane {
         }
         ((ToggleButton) menu.getChildren().get(0)).setSelected(true);
         BorderPane workspace = new BorderPane(); workspace.setLeft(menu); workspace.setCenter(center); workspace.getStyleClass().add("control-workspace");
-        provider.getSelectionModel().selectFirst(); provider.setOnAction(event -> { resetProcessSample(); recentCrashes = overloadWarnings = overloadBurst = 0; synchronized (consoleHistory) { consoleHistory.clear(); } updateProviderState(); updateAutomationProviderUi(); remoteMetricsReceived = false; cpuSeries.getData().clear(); memorySeries.getData().clear(); loadSelectedFile(); refreshContent(); refreshWorlds(); });
+        provider.getSelectionModel().selectFirst(); provider.setOnAction(event -> { cancelSparkWait("Aktif sunucu değişti • Yeni analiz başlatabilirsin"); resetProcessSample(); recentCrashes = overloadWarnings = overloadBurst = 0; lastOverloadWarningAt = null; lastRemoteOnline = null; synchronized (consoleHistory) { consoleHistory.clear(); } incidentContext.clear(); updateProviderState(); updateAutomationProviderUi(); remoteMetricsReceived = false; cpuSeries.getData().clear(); memorySeries.getData().clear(); loadSelectedFile(); refreshContent(); refreshWorlds(); });
         providerState.getStyleClass().add("muted"); Region spacer = new Region(); HBox.setHgrow(spacer, Priority.ALWAYS);
         Label title = new Label("AKTİF SUNUCU"); title.getStyleClass().add("section-title");
         HBox providerBar = new HBox(9, title, provider, providerState, spacer, new Label("Kontrol Merkezi")); providerBar.setAlignment(Pos.CENTER_LEFT); providerBar.getStyleClass().add("pro-provider-bar"); updateProviderState(); updateAutomationProviderUi();
@@ -144,13 +162,14 @@ public final class ProToolsPane {
         ListView<String> reasons = new ListView<>(healthReasons); reasons.setPrefHeight(86); reasons.setMinHeight(86); reasons.setPlaceholder(new Label("Canlı ölçüm bekleniyor"));
         VBox score = card("SUNUCU SAĞLIK PUANI", healthValue, healthState, healthProgress, reasons); score.getStyleClass().add("health-card");
 
-        automaticCrisis.setSelected(config.isCrisisModeEnabled()); crisisTps.setEditable(true); crisisRam.setEditable(true); crisisState.getStyleClass().add("crisis-state");
-        automaticCrisis.setOnAction(event -> saveCrisisPreferences()); crisisTps.valueProperty().addListener((obs, old, value) -> saveCrisisPreferences()); crisisRam.valueProperty().addListener((obs, old, value) -> saveCrisisPreferences());
-        Button startCrisis = button("Şimdi Etkinleştir", "danger"), stopCrisis = button("Krizden Çık", "secondary");
-        startCrisis.setOnAction(event -> enterCrisis("Yönetici tarafından etkinleştirildi")); stopCrisis.setOnAction(event -> exitCrisis(true));
-        HBox thresholds = new HBox(8, new Label("TPS altı"), crisisTps, new Label("RAM %"), crisisRam); thresholds.setAlignment(Pos.CENTER_LEFT);
-        Label crisisNote = new Label("Kriz sırasında otomatik görevler durur, randomTickSpeed azaltılır ve güvenli performans ayarları hazırlanır. Sunucu izinsiz yeniden başlatılmaz."); crisisNote.setWrapText(true); crisisNote.setMinHeight(38); crisisNote.getStyleClass().add("muted");
-        VBox crisis = card("KRİZ MODU", automaticCrisis, thresholds, new HBox(8, startCrisis, stopCrisis), crisisState, crisisNote); crisis.setMinHeight(225); crisis.getStyleClass().add("crisis-card"); score.setMinHeight(225);
+        automaticCrisis.setSelected(config.isCrisisModeEnabled()); crisisTps.setEditable(true); crisisRam.setEditable(true); crisisTriggerSeconds.setEditable(true); crisisRecoverySeconds.setEditable(true); crisisCooldownSeconds.setEditable(true); crisisState.getStyleClass().add("crisis-state");
+        automaticCrisis.setOnAction(event -> saveCrisisPreferences()); crisisTps.valueProperty().addListener((obs, old, value) -> saveCrisisPreferences()); crisisRam.valueProperty().addListener((obs, old, value) -> saveCrisisPreferences()); crisisTriggerSeconds.valueProperty().addListener((obs, old, value) -> saveCrisisPreferences()); crisisRecoverySeconds.valueProperty().addListener((obs, old, value) -> saveCrisisPreferences()); crisisCooldownSeconds.valueProperty().addListener((obs, old, value) -> saveCrisisPreferences());
+        Button startCrisis = button("Şimdi Etkinleştir", "danger"), stopCrisis = button("Krizden Çık", "secondary"), smartThreshold = button("Akıllı Eşik Öner", "primary");
+        startCrisis.setOnAction(event -> enterCrisis("Yönetici tarafından etkinleştirildi", true)); stopCrisis.setOnAction(event -> exitCrisis(true)); smartThreshold.setOnAction(event -> suggestSmartThresholds()); thresholdAdvice.setWrapText(true); thresholdAdvice.getStyleClass().add("muted");
+        FlowPane thresholds = new FlowPane(8, 8, new Label("TPS altı"), crisisTps, new Label("RAM %"), crisisRam, new Label("Tetikleme (sn)"), crisisTriggerSeconds);
+        FlowPane recovery = new FlowPane(8, 8, new Label("Toparlanma (sn)"), crisisRecoverySeconds, new Label("Yeniden tetikleme beklemesi (sn)"), crisisCooldownSeconds);
+        Label crisisNote = new Label("Kriz, eşiklerin belirlenen süre boyunca bozuk kalmasıyla açılır. Çıkış için TPS +1 ve RAM -%5 güvenli payla toparlanmalıdır. Manuel kriz yalnızca yönetici tarafından kapatılır; ayarlar geri yüklenmeden otomatik görevler başlamaz."); crisisNote.setWrapText(true); crisisNote.setMinHeight(42); crisisNote.getStyleClass().add("muted");
+        VBox crisis = card("KRİZ MODU", automaticCrisis, thresholds, recovery, new FlowPane(8, 8, startCrisis, stopCrisis, smartThreshold), thresholdAdvice, crisisState, crisisNote); crisis.setMinHeight(315); crisis.getStyleClass().add("crisis-card"); score.setMinHeight(315);
         HBox healthRow = new HBox(14, score, crisis); HBox.setHgrow(score, Priority.ALWAYS); HBox.setHgrow(crisis, Priority.ALWAYS); score.setMaxWidth(Double.MAX_VALUE); crisis.setMaxWidth(Double.MAX_VALUE);
 
         HBox cards = new HBox(12, metricCard("CPU / TPS", cpuValue), metricCard("SUNUCU RAM", memoryValue), metricCard("GECİKME", latencyValue), metricCard("ÇALIŞMA / DURUM", uptimeValue), metricCard("OYUNCULAR", playerValue));
@@ -168,11 +187,13 @@ public final class ProToolsPane {
     }
 
     private VBox profilerView() {
-        Spinner<Integer> seconds = new Spinner<>(60, 900, 300, 30); seconds.setEditable(true);
-        Button profile = button("SPARK PROFİLİ BAŞLAT", "primary"), health = button("SPARK SAĞLIK RAPORU", "secondary"), open = button("Son Raporu Aç", "secondary");
-        profile.setOnAction(event -> startSparkProfile(seconds.getValue())); health.setOnAction(event -> requestSparkHealthReport()); open.setOnAction(event -> openSparkReport());
-        Label note = new Label("Paper 1.21+ sunucularında yerleşik spark profilini başlatır. Sorun yaşanırken çalıştır; konsola gelen rapor bağlantısı burada saklanır."); note.setWrapText(true); note.getStyleClass().add("muted");
-        return card("LAG AVCISI", new HBox(8, new Label("Süre (sn)"), seconds, profile, health, open), note);
+        sparkDuration.getSelectionModel().selectFirst(); sparkDuration.setPrefWidth(170);
+        sparkStartButton = button("LAG ANALİZİNİ BAŞLAT", "primary"); sparkOpenButton = button("HAZIR RAPORU AÇ", "secondary"); Button help = button("Spark Yoksa?", "secondary");
+        sparkStartButton.setOnAction(event -> startSparkAnalysis()); sparkOpenButton.setOnAction(event -> openSparkReport()); help.setOnAction(event -> showSparkHelp()); sparkOpenButton.setDisable(latestSparkReport == null);
+        sparkState.setWrapText(true); sparkState.getStyleClass().add("muted");
+        FlowPane controls = new FlowPane(8, 8, new Label("Analiz süresi"), sparkDuration, sparkStartButton, sparkOpenButton, help); controls.setAlignment(Pos.CENTER_LEFT);
+        Label note = new Label("Sunucu kasarken başlat ve hiçbir şey yapmadan geri sayımın bitmesini bekle. AeroMC rapor bağlantısını konsoldan kendisi yakalar; hazır olduğunda yalnızca 'Hazır Raporu Aç'a basarsın."); note.setWrapText(true); note.getStyleClass().add("muted");
+        return card("TEK TIK LAG ANALİZİ", controls, sparkState, note);
     }
 
     private Node timelineView() {
@@ -275,7 +296,9 @@ public final class ProToolsPane {
     }
     private void analyzeConsole(String line) {
         synchronized (consoleHistory) { consoleHistory.addLast(line); while (consoleHistory.size() > 300) consoleHistory.removeFirst(); }
+        incidentContext.recordConsole(line);
         captureSparkReport(line);
+        if (sparkProfileRunning && SparkAnalysisEngine.commandRejected(line)) Platform.runLater(() -> failSparkAnalysis("Spark komutu tanınmadı. 'Spark Yoksa?' düğmesindeki kısa kurulumu uygula."));
         Matcher joined = JOIN.matcher(line), left = LEAVE.matcher(line), advancement = ADVANCEMENT.matcher(line), death = DEATH.matcher(line);
         if (joined.find()) Platform.runLater(() -> markJoined(joined.group(1)));
         if (left.find()) Platform.runLater(() -> markLeft(left.group(1)));
@@ -286,39 +309,45 @@ public final class ProToolsPane {
         else if (lower.contains("failed to bind to port") || lower.contains("address already in use")) explanation = "PORT ÇAKIŞMASI: Aynı portu başka bir uygulama kullanıyor. Diğer sunucuyu kapat veya server-port değerini değiştir.";
         else if (lower.contains("could not load") && lower.contains("plugin")) explanation = "EKLENTİ YÜKLENEMEDİ: Eklenti sürümünü ve gerekli bağımlılıklarını kontrol et.";
         else if (lower.contains("modresolutionexception") || lower.contains("requires") && lower.contains("fabric")) explanation = "MOD BAĞIMLILIĞI: Bir mod eksik ya da uyumsuz bağımlılık istiyor. Hata satırındaki mod sürümlerini eşleştir.";
-        else if (lower.contains("can't keep up") || lower.contains("server is overloaded") || lower.contains("a single server tick took")) { explanation = "PERFORMANS UYARISI: Sunucu tick'leri geride kalıyor. Görüş mesafesini azalt, RAM/CPU kullanımını ve ağır eklentileri kontrol et."; Platform.runLater(() -> { overloadWarnings++; overloadBurst++; updateHealthAndCrisis(); }); }
+        else if (lower.contains("can't keep up") || lower.contains("server is overloaded") || lower.contains("a single server tick took")) { explanation = "PERFORMANS UYARISI: Sunucu tick'leri geride kalıyor. Görüş mesafesini azalt, RAM/CPU kullanımını ve ağır eklentileri kontrol et."; Platform.runLater(() -> { overloadWarnings++; overloadBurst++; lastOverloadWarningAt = Instant.now(); updateHealthAndCrisis(); }); }
         else if (lower.contains("exception") && !lower.contains("connection")) explanation = "JAVA HATASI: Ayrıntı için bu satırın hemen altındaki 'Caused by' bölümünü kontrol et: " + trim(line, 170);
         else if (lower.contains("crash report")) explanation = "ÇÖKME RAPORU: Sunucu bir crash-report oluşturdu. En son eklenen mod/eklenti ilk şüphelidir.";
         if (explanation != null) { String alertText = explanation, value = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss")) + "  " + alertText; Platform.runLater(() -> { if (findings.isEmpty() || !findings.get(0).endsWith(value.substring(10))) { findings.add(0, value); recordEvent("Uyarı", alertText); } while (findings.size() > 100) findings.remove(findings.size() - 1); }); }
     }
 
-    private void startSparkProfile(int seconds) {
+    private void startSparkAnalysis() {
         if (!serverOnline) { showError("Lag Avcısı için seçili sunucu online olmalı."); return; }
-        String command = "spark profiler start --timeout " + seconds;
-        try {
-            if (isRemote()) runRemoteAction("Spark profilini başlatma", () -> exaroton.executeAdminCommand(command));
-            else manager.command(command);
-            recordEvent("Lag Avcısı", seconds + " saniyelik Spark profili başlatıldı.");
-            info("Lag Avcısı başladı", "Profil, sorun yaşanırken veri toplar. Tamamlanınca konsoldaki rapor bağlantısı otomatik yakalanır.");
-        } catch (Exception error) { showError("Spark profili başlatılamadı: " + rootMessage(error)); }
+        if (sparkProfileRunning) return;
+        int seconds = SparkAnalysisEngine.durationSeconds(sparkDuration.getValue()); String command = SparkAnalysisEngine.profilerCommand(seconds);
+        sparkStartButton.setDisable(true); sparkDuration.setDisable(true); sparkState.setText("Spark komutu sunucuya gönderiliyor...");
+        if (isRemote()) {
+            Task<Void> task = new Task<>() { protected Void call() throws Exception { exaroton.executeAdminCommand(command).join(); return null; } };
+            task.setOnSucceeded(event -> beginSparkCountdown(seconds)); task.setOnFailed(event -> { resetSparkControls(); showError("Spark analizi başlatılamadı: " + rootMessage(task.getException())); }); run(task, "spark-analysis-start");
+            return;
+        }
+        try { manager.command(command); beginSparkCountdown(seconds); }
+        catch (Exception error) { resetSparkControls(); showError("Spark analizi başlatılamadı: " + rootMessage(error)); }
     }
 
-    private void requestSparkHealthReport() {
-        if (!serverOnline) { showError("Spark sağlık raporu için seçili sunucu online olmalı."); return; }
-        try {
-            if (isRemote()) runRemoteAction("Spark sağlık raporu", () -> exaroton.executeAdminCommand("spark healthreport"));
-            else manager.command("spark healthreport");
-            recordEvent("Lag Avcısı", "Spark sağlık raporu istendi.");
-        } catch (Exception error) { showError("Spark sağlık raporu alınamadı: " + rootMessage(error)); }
+    private void beginSparkCountdown(int seconds) {
+        sparkProfileRunning = true; sparkDeadline = Instant.now().plusSeconds(seconds); sparkState.setText("Veri toplanıyor • " + seconds + " saniye kaldı"); sparkCountdown.playFromStart();
+        recordEvent("Lag Avcısı", seconds + " saniyelik tek tık lag analizi başlatıldı.");
+        findings.add(0, now() + "  LAG AVCISI: Veri toplama başladı; rapor otomatik yakalanacak.");
+    }
+
+    private void updateSparkCountdown() {
+        if (!sparkProfileRunning || sparkDeadline == null) { sparkCountdown.stop(); return; }
+        long remaining = java.time.Duration.between(Instant.now(), sparkDeadline).toSeconds();
+        if (remaining > 0) sparkState.setText("Veri toplanıyor • " + remaining + " saniye kaldı • Sunucuyu normal kullanmaya devam et");
+        else if (remaining >= -20) sparkState.setText("Analiz tamamlandı • Spark rapor bağlantısı bekleniyor...");
+        else failSparkAnalysis("Rapor bağlantısı gelmedi. Spark kurulu değilse 'Spark Yoksa?' düğmesine bas.");
     }
 
     private void captureSparkReport(String line) {
-        if (!line.toLowerCase(Locale.ROOT).contains("spark")) return;
-        Matcher match = URL.matcher(line);
-        if (!match.find()) return;
-        latestSparkReport = match.group().replaceAll("[).,]+$", "");
+        Optional<String> report = SparkAnalysisEngine.trustedReportUrl(line); if (report.isEmpty()) return;
+        String url = report.get(); if (url.equals(latestSparkReport) && !sparkProfileRunning) return; latestSparkReport = url;
         recordEvent("Lag Avcısı", "Spark raporu hazırlandı: " + latestSparkReport);
-        Platform.runLater(() -> findings.add(0, now() + "  LAG AVCISI: Spark raporu hazır. 'Son Raporu Aç' düğmesini kullan."));
+        Platform.runLater(() -> { sparkProfileRunning = false; sparkDeadline = null; sparkCountdown.stop(); resetSparkControls(); if (sparkOpenButton != null) sparkOpenButton.setDisable(false); sparkState.setText("RAPOR HAZIR ✓ • Şimdi 'Hazır Raporu Aç'a bas"); findings.add(0, now() + "  LAG AVCISI: Spark raporu hazır ve güvenilir bağlantı doğrulandı."); DesktopNotifier.show(notificationSource(), "AeroMC Lag Analizi", "Spark raporu hazır. Kontrol Merkezi'nden açabilirsin."); });
     }
 
     private void openSparkReport() {
@@ -326,18 +355,27 @@ public final class ProToolsPane {
         try { hostServices.showDocument(latestSparkReport); } catch (Exception error) { showError("Rapor açılamadı: " + rootMessage(error)); }
     }
 
+    private void failSparkAnalysis(String message) { sparkProfileRunning = false; sparkDeadline = null; sparkCountdown.stop(); resetSparkControls(); sparkState.setText(message); recordEvent("Lag Avcısı", message); }
+    private void cancelSparkWait(String message) { if (!sparkProfileRunning) return; failSparkAnalysis(message); }
+    private void resetSparkControls() { if (sparkStartButton != null) sparkStartButton.setDisable(false); sparkDuration.setDisable(false); if (sparkOpenButton != null) sparkOpenButton.setDisable(latestSparkReport == null); }
+    private void showSparkHelp() { info("Spark'ı hazırlamanın en kolay yolu", "Paper 1.21 ve üzerindeysen Spark genellikle sunucuyla birlikte gelir. Komut tanınmazsa Kontrol Merkezi → Tek Tık Mod Merkezi'ne gir, 'spark' ara, sunucuna yükle ve sunucuyu bir kez yeniden başlat. Sonra buraya dönüp yalnızca 'Lag Analizini Başlat'a bas."); }
+
     public void onState(boolean running, String text) {
         if (isRemote()) return;
         serverOnline = running;
+        if (!running) cancelSparkWait("Sunucu kapandı • Lag analizi beklemesi durduruldu");
         if (running) autoRestarting = false;
-        recordEvent("Sunucu", text);
         if (!running) for (String name : new HashSet<>(onlinePlayers)) markLeft(name);
         if (!running && text.toLowerCase(Locale.ROOT).contains("çöktü")) {
-            recentCrashes++; createCrashDiagnosis(); updateHealthAndCrisis();
+            recentCrashes++; createIncident(text, true); updateHealthAndCrisis();
             sendDiscord(DiscordNotificationEngine.Type.CRASH, "Yerel sunucu çöktü", text, true);
-            if (restartOnCrash.isSelected() && !autoRestarting) { autoRestarting = true; Platform.runLater(() -> findings.add(0, now() + "  OTOMASYON: Çökme sonrası yeniden başlatma tetiklendi.")); restartConfigured(); }
-        } else if (running && text.toLowerCase(Locale.ROOT).contains("online")) { sendDiscord(DiscordNotificationEngine.Type.STATUS, "Sunucu online", "Yerel Minecraft sunucusu oyuncu kabul etmeye hazır.", false); updateHealthAndCrisis(); }
-        else if (!running) sendDiscord(DiscordNotificationEngine.Type.STATUS, "Sunucu kapandı", text, false);
+            CrashLoopGuard.Decision decision = crashLoopGuard.record(Instant.now());
+            if (!decision.restartAllowed()) {
+                findings.add(0, now() + "  GÜVENLİK: " + decision.message()); recordEvent("Çökme Döngüsü Kalkanı", decision.message()); DesktopNotifier.show(notificationSource(), "Çökme döngüsü engellendi", decision.message()); sendDiscord(DiscordNotificationEngine.Type.CRASH, "Çökme döngüsü engellendi", decision.message(), true);
+            } else if (restartOnCrash.isSelected() && !autoRestarting) { autoRestarting = true; Platform.runLater(() -> findings.add(0, now() + "  OTOMASYON: Çökme sonrası yeniden başlatma tetiklendi.")); restartConfigured(); }
+        } else if (running && text.toLowerCase(Locale.ROOT).contains("online")) { recordEvent("Sunucu", text); sendDiscord(DiscordNotificationEngine.Type.STATUS, "Sunucu online", "Yerel Minecraft sunucusu oyuncu kabul etmeye hazır.", false); updateHealthAndCrisis(); }
+        else if (!running) { createIncident(text, false); sendDiscord(DiscordNotificationEngine.Type.STATUS, "Sunucu kapandı", text, false); }
+        else recordEvent("Sunucu", text);
     }
 
     public void onPlayers(List<String> names) {
@@ -360,6 +398,7 @@ public final class ProToolsPane {
     private void acceptRemoteSnapshot(ExarotonPane.ProSnapshot snapshot) {
         remoteSnapshot = snapshot; if (!isRemote()) return;
         serverOnline = snapshot.online();
+        if (!snapshot.online()) cancelSparkWait("Exaroton sunucusu kapandı • Lag analizi beklemesi durduruldu");
         providerState.setText(snapshot.name() + " • " + snapshot.status()); playerValue.setText(snapshot.players() + " / " + snapshot.maxPlayers());
         if (!snapshot.online()) { cpuValue.setText("-"); memoryValue.setText(snapshot.ramGiB() < 0 ? "-" : snapshot.ramGiB() + " GiB ayrılmış"); remoteMetricsReceived = false; }
         else if (!remoteMetricsReceived) { cpuValue.setText("Canlı veri bekleniyor"); memoryValue.setText(snapshot.ramGiB() < 0 ? "Canlı veri bekleniyor" : snapshot.ramGiB() + " GiB ayrılmış"); }
@@ -368,18 +407,19 @@ public final class ProToolsPane {
         String lower = snapshot.status().toLowerCase(Locale.ROOT);
         if (lastRemoteStatus != null && !lastRemoteStatus.equals(snapshot.status()) && snapshot.online()) sendDiscord(DiscordNotificationEngine.Type.STATUS, "Exaroton sunucusu online", snapshot.name() + " oyuncu kabul etmeye hazır.", false);
         else if (lastRemoteStatus != null && !lastRemoteStatus.equals(snapshot.status()) && !snapshot.online() && !snapshot.status().toLowerCase(Locale.ROOT).contains("crash")) sendDiscord(DiscordNotificationEngine.Type.STATUS, "Exaroton durum değişikliği", snapshot.name() + " • " + snapshot.status(), false);
-        if (lower.contains("crash") && !lower.equals(String.valueOf(lastRemoteStatus).toLowerCase(Locale.ROOT))) {
-            recentCrashes++; createCrashDiagnosis();
+        boolean crashedNow = lower.contains("crash") && !lower.equals(String.valueOf(lastRemoteStatus).toLowerCase(Locale.ROOT));
+        if (crashedNow) {
+            recentCrashes++; createIncident(snapshot.name() + " çökmüş duruma geçti", true);
             sendDiscord(DiscordNotificationEngine.Type.CRASH, "Exaroton sunucusu çöktü", snapshot.name() + " çökmüş duruma geçti.", true);
-        }
-        if (snapshot.online()) { autoRestarting = false; if (sampleIndex % 5 == 0) probeLatency(snapshot.address()); } lastRemoteStatus = snapshot.status(); updateHealthAndCrisis();
+        } else if (Boolean.TRUE.equals(lastRemoteOnline) && !snapshot.online()) createIncident(snapshot.name() + " • " + snapshot.status(), false);
+        if (snapshot.online()) { autoRestarting = false; if (sampleIndex % 5 == 0) probeLatency(snapshot.address()); } lastRemoteStatus = snapshot.status(); lastRemoteOnline = snapshot.online(); updateHealthAndCrisis();
     }
     private void acceptRemoteMetrics(ExarotonPane.ProMetrics metrics) {
         if (!isRemote()) return;
         boolean received = false;
         if (Double.isFinite(metrics.tps())) { currentTps = metrics.tps(); cpuValue.setText(String.format(Locale.US, "TPS %.1f • %.1f ms", metrics.tps(), metrics.averageTickTime())); addPoint(cpuSeries, sampleIndex, metrics.tps()); received = true; }
         if (Double.isFinite(metrics.memoryPercent())) { double percent = metrics.memoryPercent() <= 1.0 ? metrics.memoryPercent() * 100.0 : metrics.memoryPercent(); currentRamPercent = percent; memoryValue.setText(String.format(Locale.US, "%.1f%% kullanım", percent)); addPoint(memorySeries, sampleIndex, percent); received = true; }
-        if (received) { remoteMetricsReceived = true; sampleIndex++; updateHealthAndCrisis(); }
+        if (received) { remoteMetricsReceived = true; sampleIndex++; recordPerformanceSample(); updateHealthAndCrisis(); }
     }
 
     private void samplePerformance() {
@@ -394,8 +434,9 @@ public final class ProToolsPane {
         cpuValue.setText(String.format(Locale.US, "%.1f%%", percent)); memoryValue.setText(currentMemoryMb < 0 ? "Bilinmiyor" : currentMemoryMb + " MB");
         Instant start = handle.get().info().startInstant().orElse(Instant.now()); uptimeValue.setText(durationText(java.time.Duration.between(start, Instant.now()).toSeconds()));
         addPoint(cpuSeries, sampleIndex, percent); if (currentMemoryMb >= 0) addPoint(memorySeries, sampleIndex, currentMemoryMb); sampleIndex++;
+        recordPerformanceSample();
         if (sampleIndex % 5 == 0) probeLocalLatency();
-        if (notifyHighMemory.isSelected() && currentMemoryMb >= memoryLimit.getValue() && !memoryWarned) { memoryWarned = true; DesktopNotifier.show("AeroMC RAM uyarısı", "Sunucu " + currentMemoryMb + " MB RAM kullanıyor."); sendDiscord(DiscordNotificationEngine.Type.PERFORMANCE, "Yüksek RAM kullanımı", "Sunucu " + currentMemoryMb + " MB RAM kullanıyor.", true); }
+        if (notifyHighMemory.isSelected() && currentMemoryMb >= memoryLimit.getValue() && !memoryWarned) { memoryWarned = true; DesktopNotifier.show(notificationSource(), "AeroMC RAM uyarısı", "Sunucu " + currentMemoryMb + " MB RAM kullanıyor."); sendDiscord(DiscordNotificationEngine.Type.PERFORMANCE, "Yüksek RAM kullanımı", "Sunucu " + currentMemoryMb + " MB RAM kullanıyor.", true); }
         if (currentMemoryMb < memoryLimit.getValue() * .85) memoryWarned = false;
         updateHealthAndCrisis();
     }
@@ -411,27 +452,51 @@ public final class ProToolsPane {
         ServerHealthEngine.Snapshot health = ServerHealthEngine.calculate(serverOnline, currentTps, currentRamPercent, currentCpuPercent, currentLatencyMs, recentCrashes, overloadWarnings);
         healthValue.setText(health.score() + " / 100"); healthState.setText(health.state()); healthProgress.setProgress(health.score() / 100.0); healthReasons.setAll(health.reasons());
         healthProgress.getStyleClass().removeAll("health-good", "health-warning", "health-critical"); healthProgress.getStyleClass().add("health-" + health.tone());
-        boolean danger = serverOnline && ServerHealthEngine.shouldEnterCrisis(currentTps, currentRamPercent, overloadBurst, crisisTps.getValue(), crisisRam.getValue());
-        if (danger) { unhealthySamples++; healthySamples = 0; }
-        else if (serverOnline) { healthySamples++; unhealthySamples = 0; if (overloadBurst > 0) overloadBurst--; }
-        else { unhealthySamples = healthySamples = 0; }
-        if (automaticCrisis.isSelected() && !crisisActive && unhealthySamples >= 3) enterCrisis("TPS/RAM veya aşırı yük eşiği aşıldı");
-        if (crisisActive && healthySamples >= 8) exitCrisis(false);
+        Instant now = Instant.now();
+        if (lastOverloadWarningAt != null && elapsedSeconds(lastOverloadWarningAt, now) > 30) { overloadBurst = 0; lastOverloadWarningAt = null; }
+        ServerHealthEngine.CrisisSignal signal = ServerHealthEngine.crisisSignal(currentTps, currentRamPercent, overloadBurst, crisisTps.getValue(), crisisRam.getValue());
+        if (!serverOnline) {
+            crisisDangerSince = crisisRecoverySince = null;
+            if (crisisActive && !crisisTransitioning) exitCrisis(false, "Sunucu kapandığı için koruma sonlandırıldı");
+            return;
+        }
+        if (signal.danger()) {
+            if (crisisDangerSince == null) crisisDangerSince = now;
+            crisisRecoverySince = null;
+            if (!crisisActive && automaticCrisis.isSelected() && !crisisTransitioning) {
+                long triggerLeft = Math.max(0, crisisTriggerSeconds.getValue() - elapsedSeconds(crisisDangerSince, now));
+                long cooldownLeft = Math.max(0, crisisCooldownSeconds.getValue() - elapsedSeconds(crisisLastExit, now));
+                if (cooldownLeft > 0) crisisState.setText("Bekleme koruması • " + cooldownLeft + " sn • " + signal.reason());
+                else if (triggerLeft > 0) crisisState.setText("Kriz doğrulanıyor • " + triggerLeft + " sn • " + signal.reason());
+                else enterCrisis(signal.reason(), false);
+            } else if (crisisActive && !crisisTransitioning) crisisState.setText("ETKİN • " + signal.reason() + (crisisManual ? " • Manuel kontrol" : ""));
+        } else {
+            crisisDangerSince = null;
+            if (crisisActive && !crisisTransitioning && !crisisManual) {
+                boolean recovered = signal.recovered() || !crisisNeedsMetricsForRecovery && overloadBurst == 0;
+                if (recovered) {
+                    if (crisisRecoverySince == null) crisisRecoverySince = now;
+                    long recoveryLeft = Math.max(0, crisisRecoverySeconds.getValue() - elapsedSeconds(crisisRecoverySince, now));
+                    if (recoveryLeft > 0) crisisState.setText("ETKİN • Toparlanma doğrulanıyor: " + recoveryLeft + " sn");
+                    else exitCrisis(false, "Sunucu değerleri kararlı biçimde toparlandı");
+                } else crisisRecoverySince = null;
+            } else if (!crisisActive && !crisisTransitioning) crisisState.setText("Kriz Modu beklemede");
+        }
     }
 
     private void saveCrisisPreferences() {
-        config.setCrisisModeEnabled(automaticCrisis.isSelected()); config.setCrisisTpsThreshold(crisisTps.getValue()); config.setCrisisRamThreshold(crisisRam.getValue());
+        config.setCrisisModeEnabled(automaticCrisis.isSelected()); config.setCrisisTpsThreshold(crisisTps.getValue()); config.setCrisisRamThreshold(crisisRam.getValue()); config.setCrisisTriggerSeconds(crisisTriggerSeconds.getValue()); config.setCrisisRecoverySeconds(crisisRecoverySeconds.getValue()); config.setCrisisCooldownSeconds(crisisCooldownSeconds.getValue());
         try { config.save(); } catch (IOException error) { showError(error.getMessage()); }
     }
 
-    private void enterCrisis(String reason) {
-        if (crisisActive) return;
+    private void enterCrisis(String reason, boolean manual) {
+        if (crisisActive || crisisTransitioning) return;
         if (!serverOnline) { showError("Kriz Modu için seçili sunucu online olmalı."); return; }
-        crisisActive = true; crisisProvider = provider.getValue(); provider.setDisable(true); unhealthySamples = 0; healthySamples = 0; scheduler.pause(); crisisState.setText("ETKİN • " + reason); crisisState.getStyleClass().add("crisis-active");
+        crisisActive = true; crisisManual = manual; crisisTransitioning = true; crisisNeedsMetricsForRecovery = Double.isFinite(currentTps) || Double.isFinite(currentRamPercent); crisisProvider = provider.getValue(); provider.setDisable(true); crisisDangerSince = crisisRecoverySince = null; scheduler.pause(); crisisState.setText("Kriz önlemleri uygulanıyor • " + reason); crisisState.getStyleClass().add("crisis-active");
         findings.add(0, now() + "  KRİZ MODU: " + reason + ". Otomatik ağır görevler durduruldu."); recordEvent("Kriz Modu", "Etkinleştirildi: " + reason);
-        Task<Void> task = new Task<>() { protected Void call() throws Exception { applyCrisisSettings(); return null; } };
-        task.setOnSucceeded(event -> { DesktopNotifier.show("AeroMC Kriz Modu", "Sunucuyu rahatlatan güvenli önlemler uygulandı."); sendDiscord(DiscordNotificationEngine.Type.PERFORMANCE, "Kriz Modu etkinleştirildi", reason, true); });
-        task.setOnFailed(event -> { findings.add(0, now() + "  KRİZ UYARISI: Bazı önlemler uygulanamadı: " + rootMessage(task.getException())); }); run(task, "crisis-enter");
+        Task<Void> task = new Task<>() { protected Void call() throws Exception { try { applyCrisisSettings(); return null; } catch (Exception error) { try { restoreCrisisSettings(); } catch (Exception restoreError) { error.addSuppressed(restoreError); } throw error; } } };
+        task.setOnSucceeded(event -> { crisisTransitioning = false; crisisState.setText("ETKİN • " + reason + (manual ? " • Manuel kontrol" : "")); DesktopNotifier.show(notificationSource(), "AeroMC Kriz Modu", "Sunucuyu rahatlatan güvenli önlemler uygulandı."); sendDiscord(DiscordNotificationEngine.Type.PERFORMANCE, "Kriz Modu etkinleştirildi", reason, true); });
+        task.setOnFailed(event -> { crisisActive = crisisManual = crisisTransitioning = crisisNeedsMetricsForRecovery = false; crisisLastExit = Instant.now(); provider.setDisable(false); scheduler.play(); crisisState.setText("Kriz Modu etkinleştirilemedi"); crisisState.getStyleClass().remove("crisis-active"); String error = rootMessage(task.getException()); findings.add(0, now() + "  KRİZ UYARISI: Önlemler geri alındı: " + error); recordEvent("Kriz Modu", "Etkinleştirme başarısız: " + error); }); run(task, "crisis-enter");
     }
 
     private void applyCrisisSettings() throws Exception {
@@ -449,12 +514,14 @@ public final class ProToolsPane {
         manager.command("say [AeroMC] Kriz Modu etkin: ağır görevler geçici olarak azaltılıyor."); manager.command("gamerule randomTickSpeed 1"); manager.command("save-all");
     }
 
-    private void exitCrisis(boolean manual) {
-        if (!crisisActive) return;
-        crisisActive = false; provider.setDisable(false); unhealthySamples = healthySamples = 0; scheduler.play(); crisisState.setText(manual ? "Kriz Modu yönetici tarafından kapatıldı" : "Sunucu toparlandı • Kriz Modu kapatıldı"); crisisState.getStyleClass().remove("crisis-active"); recordEvent("Kriz Modu", manual ? "Yönetici tarafından kapatıldı" : "Sunucu toparlanınca otomatik kapatıldı");
+    private void exitCrisis(boolean manual) { exitCrisis(manual, manual ? "Yönetici tarafından kapatıldı" : "Sunucu değerleri kararlı biçimde toparlandı"); }
+
+    private void exitCrisis(boolean manual, String reason) {
+        if (!crisisActive || crisisTransitioning) return;
+        crisisTransitioning = true; crisisState.setText("Normal ayarlar geri yükleniyor...");
         Task<Void> task = new Task<>() { protected Void call() throws Exception { restoreCrisisSettings(); return null; } };
-        task.setOnSucceeded(event -> { findings.add(0, now() + "  KRİZ MODU: Normal ayarlar geri yüklendi, otomatik görevler devam ediyor."); sendDiscord(DiscordNotificationEngine.Type.PERFORMANCE, "Kriz Modu kapandı", "Sunucu değerleri toparlandı ve normal ayarlar geri yüklendi.", false); });
-        task.setOnFailed(event -> findings.add(0, now() + "  KRİZ UYARISI: Ayarlar geri yüklenemedi: " + rootMessage(task.getException()))); run(task, "crisis-exit");
+        task.setOnSucceeded(event -> { crisisActive = crisisManual = crisisTransitioning = crisisNeedsMetricsForRecovery = false; crisisLastExit = Instant.now(); crisisDangerSince = crisisRecoverySince = null; provider.setDisable(false); scheduler.play(); crisisState.setText(reason + " • Kriz Modu kapatıldı"); crisisState.getStyleClass().remove("crisis-active"); recordEvent("Kriz Modu", reason); findings.add(0, now() + "  KRİZ MODU: Normal ayarlar geri yüklendi, otomatik görevler devam ediyor."); sendDiscord(DiscordNotificationEngine.Type.PERFORMANCE, "Kriz Modu kapandı", reason + ". Normal ayarlar geri yüklendi.", false); });
+        task.setOnFailed(event -> { crisisTransitioning = false; String error = rootMessage(task.getException()); crisisState.setText("ETKİN • Ayarlar geri yüklenemedi; Krizden Çık ile yeniden dene"); findings.add(0, now() + "  KRİZ UYARISI: Ayarlar geri yüklenemedi: " + error); recordEvent("Kriz Modu", "Çıkış başarısız: " + error); }); run(task, "crisis-exit");
     }
 
     private void restoreCrisisSettings() throws Exception {
@@ -467,12 +534,32 @@ public final class ProToolsPane {
     }
 
     private boolean isCrisisRemote() { return "Exaroton".equals(crisisProvider); }
+    private long elapsedSeconds(Instant start, Instant end) { return start == null ? 0 : Math.max(0, java.time.Duration.between(start, end).toSeconds()); }
 
-    private void createCrashDiagnosis() {
+    private void createIncident(String state, boolean crashed) {
         List<String> history; synchronized (consoleHistory) { history = new ArrayList<>(consoleHistory); }
         CrashDoctor.Diagnosis diagnosis = CrashDoctor.diagnose(history); String actions = String.join(" → ", diagnosis.actions());
-        crashReports.add(0, LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd.MM HH:mm")) + "  " + diagnosis.summary() + "  |  Kanıt: " + diagnosis.evidence() + "  |  Çözüm: " + actions);
+        IncidentContext.Report context = incidentContext.report(Instant.now());
+        String report = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd.MM HH:mm")) + "  " + (crashed ? "ÇÖKME" : "KAPANMA") + " • " + context.detail() + "  |  Tanı: " + diagnosis.summary() + "  |  Kanıt: " + diagnosis.evidence() + "  |  Çözüm: " + actions;
+        crashReports.add(0, report);
         while (crashReports.size() > 30) crashReports.remove(crashReports.size() - 1);
+        recordEvent(crashed ? "Çökme Vakası" : "Kapanma Vakası", state + " • " + context.detail() + " • Tanı: " + diagnosis.summary());
+    }
+
+    private void recordPerformanceSample() {
+        Instant time = Instant.now(); incidentContext.recordMetric(time, currentTps, currentRamPercent, currentCpuPercent); thresholdAdvisor.record(time, notificationSource(), currentTps, currentRamPercent);
+    }
+
+    private void suggestSmartThresholds() {
+        Optional<SmartThresholdAdvisor.Recommendation> value = thresholdAdvisor.recommend(notificationSource(), Instant.now());
+        if (value.isEmpty()) { info("Akıllı Eşik henüz hazır değil", "AeroMC'nin en az 20 seyrekleştirilmiş ölçüme ihtiyacı var. Sunucuyu yaklaşık 10 dakika normal kullanıp tekrar dene."); return; }
+        SmartThresholdAdvisor.Recommendation advice = value.get();
+        String detail = String.format(Locale.US, "TPS: %.1f → %.1f%nRAM: %d%% → %d%%%nTetikleme: %d sn → %d sn%n%nGüven: %s • %d örnek%n%s", crisisTps.getValue(), advice.tps(), crisisRam.getValue(), advice.ramPercent(), crisisTriggerSeconds.getValue(), advice.triggerSeconds(), advice.confidence(), advice.samples(), advice.explanation());
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION, detail, ButtonType.YES, ButtonType.NO); alert.setHeaderText("Önerilen kriz eşikleri uygulansın mı?");
+        if (alert.showAndWait().orElse(ButtonType.NO) != ButtonType.YES) return;
+        crisisTps.getValueFactory().setValue(advice.tps()); crisisRam.getValueFactory().setValue(advice.ramPercent()); crisisTriggerSeconds.getValueFactory().setValue(advice.triggerSeconds()); saveCrisisPreferences();
+        thresholdAdvice.setText(String.format(Locale.US, "Uygulandı • TPS %.1f altı • RAM %%%d • %d sn • Güven: %s", advice.tps(), advice.ramPercent(), advice.triggerSeconds(), advice.confidence()));
+        recordEvent("Akıllı Eşik", thresholdAdvice.getText());
     }
 
     private void addPoint(XYChart.Series<Number, Number> series, long x, double y) { series.getData().add(new XYChart.Data<>(x, y)); while (series.getData().size() > 60) series.getData().remove(0); }
@@ -510,32 +597,32 @@ public final class ProToolsPane {
         try { Files.createDirectories(file.getParent()); if (Files.exists(file)) Files.copy(file, file.resolveSibling(file.getFileName() + ".bak"), StandardCopyOption.REPLACE_EXISTING); atomicWrite(file, fileEditor.getText()); fileState.setText("Kaydedildi: " + LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"))); } catch (IOException error) { showError(error.getMessage()); }
     }
     private Path safeSelectedFile() {
-        Path folder = manager.getServerFolder(); String name = fileChoice.getValue(); if (folder == null) { showError("Önce Yerel JAR sekmesinden server.jar seç."); return null; } if (!SAFE_FILES.contains(name)) { showError("Bu dosyanın düzenlenmesine izin verilmiyor."); return null; } return folder.resolve(name).normalize();
+        Path folder = manager.getServerFolder(); String name = fileChoice.getValue(); if (folder == null) { showError("Önce Yerel JAR sekmesinden server.jar seç."); return null; } if (!SAFE_FILES.contains(name)) { showError("Bu dosyanın düzenlenmesine izin verilmiyor."); return null; } try { return SafePathGuard.resolve(folder, name, true); } catch (IOException error) { showError(error.getMessage()); return null; }
     }
     private void openServerFolder() { if (isRemote()) { showError("Exaroton dosyaları uzakta olduğu için yerel klasör açılamaz; dosya editörünü kullanabilirsin."); return; } Path folder = manager.getServerFolder(); if (folder == null) showError("Önce bir server.jar seç."); else try { hostServices.showDocument(folder.toUri().toString()); } catch (Exception error) { showError("Klasör açılamadı: " + error.getMessage()); } }
 
-    private Path contentFolder() { Path root = manager.getServerFolder(); if (root == null) return null; return root.resolve(contentType.getSelectionModel().getSelectedIndex() == 1 ? "mods" : "plugins"); }
+    private Path contentFolder() { Path root = manager.getServerFolder(); if (root == null) return null; try { return SafePathGuard.resolve(root, contentType.getSelectionModel().getSelectedIndex() == 1 ? "mods" : "plugins", true); } catch (IOException error) { showError(error.getMessage()); return null; } }
     private void refreshContent() {
         if (isRemote()) { String directory = contentType.getSelectionModel().getSelectedIndex() == 1 ? "/mods" : "/plugins"; Task<List<String>> task = new Task<>() { protected List<String> call() throws Exception { return exaroton.listRemoteDirectory(directory).join(); } }; task.setOnSucceeded(event -> contentList.getItems().setAll(task.getValue().stream().filter(name -> name.endsWith(".jar") || name.endsWith(".jar.disabled")).map(Path::of).toList())); task.setOnFailed(event -> contentList.getItems().clear()); run(task, "exaroton-content-list"); return; }
-        Path folder = contentFolder(); if (folder == null) { contentList.getItems().clear(); return; } try { Files.createDirectories(folder); try (var files = Files.list(folder)) { contentList.getItems().setAll(files.filter(path -> Files.isRegularFile(path) && (path.getFileName().toString().endsWith(".jar") || path.getFileName().toString().endsWith(".jar.disabled"))).sorted().toList()); } } catch (IOException error) { showError(error.getMessage()); }
+        Path folder = contentFolder(); if (folder == null) { contentList.getItems().clear(); return; } try { Files.createDirectories(folder); try (var files = Files.list(folder)) { contentList.getItems().setAll(files.filter(path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(path) && (path.getFileName().toString().endsWith(".jar") || path.getFileName().toString().endsWith(".jar.disabled"))).sorted().toList()); } } catch (IOException error) { showError(error.getMessage()); }
     }
     private void importContent() {
         Path folder = contentFolder(); if (!isRemote() && folder == null) { showError("Önce Yerel JAR sekmesinden server.jar seç."); return; } if (isRemote() && !exaroton.hasActiveServer()) { showError("Önce Exaroton sekmesinden bir sunucu seç."); return; }
         FileChooser chooser = new FileChooser(); chooser.setTitle("Eklenti veya mod JAR dosyası seç"); chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Java arşivi", "*.jar")); File selected = chooser.showOpenDialog(contentList.getScene().getWindow()); if (selected == null) return;
         if (isRemote()) { String directory = contentType.getSelectionModel().getSelectedIndex() == 1 ? "/mods" : "/plugins"; Task<Void> task = new Task<>() { protected Void call() throws Exception { exaroton.uploadRemoteFile(directory, selected.toPath()).join(); return null; } }; task.setOnSucceeded(event -> { refreshContent(); info("Yükleme tamamlandı", selected.getName() + " Exaroton'a gönderildi."); }); task.setOnFailed(event -> showError(rootMessage(task.getException()))); run(task, "exaroton-content-upload"); return; }
-        try { Files.createDirectories(folder); Files.copy(selected.toPath(), folder.resolve(selected.getName()), StandardCopyOption.REPLACE_EXISTING); refreshContent(); } catch (IOException error) { showError(error.getMessage()); }
+        try { Files.createDirectories(folder); Path target = SafePathGuard.requireWithin(manager.getServerFolder(), folder.resolve(selected.getName()), true); Files.copy(selected.toPath(), target, StandardCopyOption.REPLACE_EXISTING); refreshContent(); } catch (IOException error) { showError(error.getMessage()); }
     }
-    private void toggleContent() { if (isRemote()) { showError("Exaroton API dosya yeniden adlandırmayı desteklemiyor. Dosya yükleme çalışır; devre dışı bırakma işlemini Exaroton panelinden yapabilirsin."); return; } Path selected = contentList.getSelectionModel().getSelectedItem(); if (selected == null) return; String name = selected.getFileName().toString(); Path target = selected.resolveSibling(isDisabled(selected) ? name.substring(0, name.length() - ".disabled".length()) : name + ".disabled"); try { Files.move(selected, target); refreshContent(); } catch (IOException error) { showError(error.getMessage()); } }
+    private void toggleContent() { if (isRemote()) { showError("Exaroton API dosya yeniden adlandırmayı desteklemiyor. Dosya yükleme çalışır; devre dışı bırakma işlemini Exaroton panelinden yapabilirsin."); return; } Path selected = contentList.getSelectionModel().getSelectedItem(); if (selected == null) return; String name = selected.getFileName().toString(); Path target = selected.resolveSibling(isDisabled(selected) ? name.substring(0, name.length() - ".disabled".length()) : name + ".disabled"); try { Path root = manager.getServerFolder(); Files.move(SafePathGuard.requireWithin(root, selected, false), SafePathGuard.requireWithin(root, target, true)); refreshContent(); } catch (IOException error) { showError(error.getMessage()); } }
     private boolean isDisabled(Path path) { return path.getFileName().toString().endsWith(".disabled"); }
 
-    private void refreshWorlds() { if (isRemote()) { Task<List<String>> task = new Task<>() { protected List<String> call() throws Exception { return exaroton.listRemoteDirectory("/").join(); } }; task.setOnSucceeded(event -> worldList.getItems().setAll(task.getValue().stream().filter(name -> name.endsWith("/")).map(name -> name.substring(0, name.length() - 1)).filter(name -> name.equals("world") || name.endsWith("_nether") || name.endsWith("_the_end")).map(Path::of).toList())); task.setOnFailed(event -> worldList.getItems().clear()); run(task, "exaroton-world-list"); return; } Path folder = manager.getServerFolder(); if (folder == null) { worldList.getItems().clear(); return; } try (var dirs = Files.list(folder)) { worldList.getItems().setAll(dirs.filter(Files::isDirectory).filter(path -> { String n = path.getFileName().toString(); return n.equals("world") || n.endsWith("_nether") || n.endsWith("_the_end") || Files.exists(path.resolve("level.dat")); }).sorted().toList()); } catch (IOException error) { showError(error.getMessage()); } }
-    private void backupWorlds() { if (isRemote()) { showError("Exaroton resmî API'si yedek oluşturma uç noktası sunmuyor. Diğer Pro işlemleri bağlı; yedeği Exaroton panelinden başlatmalısın."); return; } runTask("world-backup", manager::createBackup, path -> { recordEvent("Yedek", "Dünya yedeği hazırlandı: " + path.getFileName()); DesktopNotifier.show("AeroMC", "Dünya yedeği hazır."); sendDiscord(DiscordNotificationEngine.Type.BACKUP, "Yedek hazır", path.getFileName() + " başarıyla oluşturuldu.", false); info("Yedek hazır", path.toString()); }); }
+    private void refreshWorlds() { if (isRemote()) { Task<List<String>> task = new Task<>() { protected List<String> call() throws Exception { return exaroton.listRemoteDirectory("/").join(); } }; task.setOnSucceeded(event -> worldList.getItems().setAll(task.getValue().stream().filter(name -> name.endsWith("/")).map(name -> name.substring(0, name.length() - 1)).filter(name -> name.equals("world") || name.endsWith("_nether") || name.endsWith("_the_end")).map(Path::of).toList())); task.setOnFailed(event -> worldList.getItems().clear()); run(task, "exaroton-world-list"); return; } Path folder = manager.getServerFolder(); if (folder == null) { worldList.getItems().clear(); return; } try (var dirs = Files.list(folder)) { worldList.getItems().setAll(dirs.filter(path -> Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(path)).filter(path -> { String n = path.getFileName().toString(); return n.equals("world") || n.endsWith("_nether") || n.endsWith("_the_end") || Files.exists(path.resolve("level.dat"), LinkOption.NOFOLLOW_LINKS); }).sorted().toList()); } catch (IOException error) { showError(error.getMessage()); } }
+    private void backupWorlds() { if (isRemote()) { showError("Exaroton resmî API'si yedek oluşturma uç noktası sunmuyor. Diğer Pro işlemleri bağlı; yedeği Exaroton panelinden başlatmalısın."); return; } runTask("world-backup", manager::createBackup, path -> { recordEvent("Yedek", "Dünya yedeği hazırlandı: " + path.getFileName()); DesktopNotifier.show(notificationSource(), "AeroMC", "Dünya yedeği hazır."); sendDiscord(DiscordNotificationEngine.Type.BACKUP, "Yedek hazır", path.getFileName() + " başarıyla oluşturuldu.", false); info("Yedek hazır", path.toString()); }); }
     private void createWorld(String name) {
         if (isRemote()) { showError("Exaroton'da yeni dünya yükleme resmî API tarafından sunulmuyor; server.properties içindeki level-name alanını Pro Dosyalar bölümünden değiştirebilirsin."); return; }
         if (!name.matches("[A-Za-z0-9_-]{1,40}")) { showError("Dünya adı yalnızca harf, rakam, _ ve - içerebilir."); return; }
         if (manager.isRunning()) { showError("Yeni dünya seçmeden önce sunucuyu durdur."); return; }
         Path folder = manager.getServerFolder(); if (folder == null) { showError("Önce server.jar seç."); return; }
-        Path properties = folder.resolve("server.properties"); try { updateProperty(properties, "level-name", name); info("Dünya ayarlandı", name + " sunucu sonraki açılışta oluşturulacak."); refreshWorlds(); } catch (IOException error) { showError(error.getMessage()); }
+        try { Path properties = SafePathGuard.resolve(folder, "server.properties", true); updateProperty(properties, "level-name", name); info("Dünya ayarlandı", name + " sunucu sonraki açılışta oluşturulacak."); refreshWorlds(); } catch (IOException error) { showError(error.getMessage()); }
     }
     private void restoreWorld() {
         if (isRemote()) { showError("Exaroton API dünya ZIP geri yüklemesine izin vermiyor. Bu işlem Exaroton web panelinden yapılmalı."); return; }
@@ -544,11 +631,31 @@ public final class ProToolsPane {
         Task<Void> task = new Task<>() { protected Void call() throws Exception { restoreWorldZip(zip.toPath(), selectedWorld); return null; } }; task.setOnSucceeded(event -> { refreshWorlds(); info("Geri yükleme tamamlandı", "Eski dünya kurtarma klasörüne taşındı."); }); task.setOnFailed(event -> showError(rootMessage(task.getException()))); run(task, "world-restore");
     }
     private void restoreWorldZip(Path zipFile, Path world) throws IOException {
-        Path root = world.getParent(), recovery = root.resolve(world.getFileName() + ".pre-restore-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))); Files.move(world, recovery);
-        String prefix = world.getFileName().toString() + "/"; boolean extracted = false;
-        try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(zipFile))) { ZipEntry entry; while ((entry = zip.getNextEntry()) != null) { String name = entry.getName().replace('\\', '/'); if (!name.startsWith(prefix)) continue; Path target = root.resolve(name).normalize(); if (!target.startsWith(root)) throw new IOException("Güvensiz ZIP yolu engellendi."); if (entry.isDirectory()) Files.createDirectories(target); else { Files.createDirectories(target.getParent()); Files.copy(zip, target, StandardCopyOption.REPLACE_EXISTING); } extracted = true; } }
-        if (!extracted) { Files.move(recovery, world); throw new IOException("Yedekte " + world.getFileName() + " bulunamadı."); }
+        Path root = manager.getServerFolder(); if (root == null) throw new IOException("Sunucu klasörü bulunamadı."); root = root.toRealPath(LinkOption.NOFOLLOW_LINKS); world = SafePathGuard.requireWithin(root, world, false);
+        if (!world.getParent().equals(root)) throw new IOException("Yalnızca sunucu kökündeki dünyalar geri yüklenebilir.");
+        String worldName = world.getFileName().toString(), prefix = worldName + "/"; Path staging = SafePathGuard.resolve(root, ".aeromc-restore-" + UUID.randomUUID(), true), recovery = SafePathGuard.resolve(root, worldName + ".pre-restore-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")), true); Files.createDirectory(staging);
+        boolean extracted = false, movedOriginal = false; long total = 0; int entries = 0;
+        try {
+            try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(zipFile))) {
+                ZipEntry entry;
+                while ((entry = zip.getNextEntry()) != null) {
+                    if (++entries > 100_000) throw new IOException("ZIP çok fazla dosya içeriyor.");
+                    String name = entry.getName().replace('\\', '/'); if (!name.startsWith(prefix)) continue;
+                    Path target = SafePathGuard.requireWithin(staging, staging.resolve(name).normalize(), true);
+                    if (entry.isDirectory()) Files.createDirectories(target);
+                    else { Files.createDirectories(target.getParent()); total += copyZipLimited(zip, target, 20L * 1024 * 1024 * 1024 - total); }
+                    extracted = true;
+                }
+            }
+            Path stagedWorld = SafePathGuard.requireWithin(staging, staging.resolve(worldName), false); if (!extracted || !Files.isDirectory(stagedWorld, LinkOption.NOFOLLOW_LINKS)) throw new IOException("Yedekte " + worldName + " bulunamadı.");
+            Files.move(world, recovery); movedOriginal = true; Files.move(stagedWorld, world); movedOriginal = false;
+        } catch (IOException error) {
+            if (movedOriginal && !Files.exists(world, LinkOption.NOFOLLOW_LINKS) && Files.exists(recovery, LinkOption.NOFOLLOW_LINKS)) Files.move(recovery, world);
+            throw error;
+        } finally { deleteStaging(staging); }
     }
+    private long copyZipLimited(InputStream input, Path target, long remaining) throws IOException { if (remaining <= 0) throw new IOException("ZIP açılmış boyutu 20 GiB sınırını aşıyor."); long total = 0; byte[] buffer = new byte[64 * 1024]; try (OutputStream output = Files.newOutputStream(target, StandardOpenOption.CREATE_NEW)) { int count; while ((count = input.read(buffer)) >= 0) { total += count; if (total > remaining) throw new IOException("ZIP açılmış boyutu 20 GiB sınırını aşıyor."); output.write(buffer, 0, count); } } return total; }
+    private void deleteStaging(Path staging) { try { if (!Files.exists(staging, LinkOption.NOFOLLOW_LINKS)) return; try (var paths = Files.walk(staging)) { for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path); } } catch (IOException ignored) { } }
 
     private void addJob(String action, int minutes, String message) { if (action.equals("Duyuru gönder") && message.isBlank()) { showError("Duyuru metnini gir."); return; } jobs.add(new Job(UUID.randomUUID().toString(), LocalDateTime.now().plusMinutes(minutes), action, message)); jobs.sort(Comparator.comparing(job -> job.due)); saveJobs(); recordEvent("Otomasyon", action + " görevi " + minutes + " dakika sonrası için planlandı."); }
     private void runDueJobs() { List<Job> due = jobs.stream().filter(job -> !job.due.isAfter(LocalDateTime.now())).toList(); for (Job job : due) { executeJob(job); jobs.remove(job); } if (!due.isEmpty()) saveJobs(); }
@@ -567,7 +674,7 @@ public final class ProToolsPane {
         }
         if (!manager.isRunning()) { showError("Bakım modu için yerel sunucu çalışıyor olmalı."); return; } if (!confirm("Bakım modu sunucuyu yedekleyip kapatacak. Devam edilsin mi?")) return;
         Task<Path> task = new Task<>() { protected Path call() throws Exception { manager.command("whitelist on"); manager.command("say Sunucu bakım moduna giriyor. Lütfen güvenli şekilde çıkış yapın."); manager.command("save-all flush"); Thread.sleep(1500); Path backup = manager.createBackup(); manager.stop(); return backup; } };
-        task.setOnSucceeded(event -> { findings.add(0, now() + "  BAKIM: Whitelist açıldı, yedek alındı ve sunucu kapatıldı."); DesktopNotifier.show("AeroMC", "Bakım modu tamamlandı."); sendDiscord(DiscordNotificationEngine.Type.MAINTENANCE, "Bakım modu tamamlandı", "Whitelist açıldı, yedek alındı ve yerel sunucu güvenli şekilde kapatıldı.", false); }); task.setOnFailed(event -> showError(rootMessage(task.getException()))); run(task, "maintenance-mode");
+        task.setOnSucceeded(event -> { findings.add(0, now() + "  BAKIM: Whitelist açıldı, yedek alındı ve sunucu kapatıldı."); DesktopNotifier.show(notificationSource(), "AeroMC", "Bakım modu tamamlandı."); sendDiscord(DiscordNotificationEngine.Type.MAINTENANCE, "Bakım modu tamamlandı", "Whitelist açıldı, yedek alındı ve yerel sunucu güvenli şekilde kapatıldı.", false); }); task.setOnFailed(event -> showError(rootMessage(task.getException()))); run(task, "maintenance-mode");
     }
 
     private void markJoined(String name) { if (onlinePlayers.contains(name)) return; PlayerProfile profile = profiles.computeIfAbsent(name, PlayerProfile::new); long now = Instant.now().getEpochSecond(); if (profile.firstSeen == 0) profile.firstSeen = now; profile.lastSeen = now; profile.joins++; profile.activeSince = now; onlinePlayers.add(name); refreshPlayerRows(); savePlayers(); }
@@ -696,10 +803,11 @@ public final class ProToolsPane {
         discordState.setText("Discord bildirimi gönderiliyor..."); String payload = DiscordNotificationEngine.payload(settings, event); discordClient.send(uri, payload).thenAccept(result -> Platform.runLater(() -> { discordState.setText(result.message()); if (result.success() && config.isAutomaticCredentialVaultEnabled() && !enteredUrl.isBlank()) { automaticDiscordWebhook = enteredUrl; webhook.clear(); updateDiscordVaultPrompt(); storeAutomaticDiscordWebhook(enteredUrl); } if (force && result.success()) info("Discord bağlantısı başarılı", "Test embed mesajı gönderildi."); else if (force && !result.success()) showError(result.message()); }));
     }
     private String discordServerName() { if (isRemote() && remoteSnapshot != null) return remoteSnapshot.name(); Path folder = manager.getServerFolder(); return folder == null || folder.getFileName() == null ? (isRemote() ? exaroton.getActiveServerName() : "Yerel sunucu") : folder.getFileName().toString(); }
+    private String notificationSource() { return isRemote() ? NotificationCenter.serverSource("Exaroton", exaroton.getActiveServerName()) : NotificationCenter.serverSource("Yerel JAR", ""); }
 
     private void runRemoteAction(String name, Callable<CompletableFuture<Void>> action) { Task<Void> task = new Task<>() { protected Void call() throws Exception { action.call().join(); return null; } }; task.setOnFailed(event -> showError(name + " başarısız: " + rootMessage(task.getException()))); run(task, name.toLowerCase(Locale.ROOT).replace(' ', '-')); }
 
-    public void shutdown() { metrics.stop(); scheduler.stop(); discordClient.close(); webhook.clear(); automaticDiscordWebhook = null; if (crisisActive) { try { restoreCrisisSettings(); } catch (Exception ignored) { } } for (String name : new HashSet<>(onlinePlayers)) markLeft(name); }
+    public void shutdown() { metrics.stop(); scheduler.stop(); sparkCountdown.stop(); discordClient.close(); webhook.clear(); automaticDiscordWebhook = null; if (crisisActive) { try { restoreCrisisSettings(); } catch (Exception ignored) { } } for (String name : new HashSet<>(onlinePlayers)) markLeft(name); }
     private void atomicWrite(Path file, String text) throws IOException { Path temp = Files.createTempFile(file.getParent(), ".aeromc-", ".tmp"); Files.writeString(temp, text, StandardCharsets.UTF_8); try { Files.move(temp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); } catch (AtomicMoveNotSupportedException ignored) { Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING); } }
     private void updateProperty(Path file, String key, String value) throws IOException { List<String> lines = Files.exists(file) ? Files.readAllLines(file, StandardCharsets.UTF_8) : new ArrayList<>(); boolean found = false; List<String> out = new ArrayList<>(); for (String line : lines) { if (!line.stripLeading().startsWith("#") && line.startsWith(key + "=")) { out.add(key + "=" + value); found = true; } else out.add(line); } if (!found) out.add(key + "=" + value); Files.createDirectories(file.getParent()); atomicWrite(file, String.join(System.lineSeparator(), out) + System.lineSeparator()); }
     private Properties loadProperties(Path file) { Properties values = new Properties(); try { if (Files.exists(file)) try (Reader reader = Files.newBufferedReader(file)) { values.load(reader); } } catch (IOException ignored) { } return values; }

@@ -56,6 +56,7 @@ public final class DeviceCredentialStore {
             properties.setProperty("iv", Base64.getEncoder().encodeToString(iv));
             properties.setProperty("data", Base64.getEncoder().encodeToString(encrypted));
             Files.createDirectories(file.getParent());
+            restrictDirectory(file.getParent());
             Path temporary = Files.createTempFile(file.getParent(), ".aeromc-secret-", ".tmp");
             try {
                 try (var writer = Files.newBufferedWriter(temporary, StandardCharsets.UTF_8)) { properties.store(writer, "AeroMC device-bound credential"); }
@@ -100,6 +101,7 @@ public final class DeviceCredentialStore {
     private static byte[] random(int size) { byte[] value = new byte[size]; RANDOM.nextBytes(value); return value; }
     private static String required(Properties values, String key) throws IOException { String value = values.getProperty(key); if (value == null || value.isBlank()) throw new IOException("Kimlik kasası bozuk."); return value; }
     private static void restrict(Path file) { try { Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-------")); } catch (IOException | UnsupportedOperationException ignored) { } }
+    private static void restrictDirectory(Path directory) { try { Files.setPosixFilePermissions(directory, PosixFilePermissions.fromString("rwx------")); } catch (IOException | UnsupportedOperationException ignored) { } }
 
     private static String deviceFingerprint() throws Exception {
         String machine = firstReadable(Path.of("/etc/machine-id"), Path.of("/var/lib/dbus/machine-id"));

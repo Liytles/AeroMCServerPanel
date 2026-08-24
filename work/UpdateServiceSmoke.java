@@ -25,6 +25,12 @@ public final class UpdateServiceSmoke {
         Path file = Files.createTempFile("aeromc-update-hash-", ".bin"); Files.writeString(file, "abc");
         require(hash.equals(UpdateService.sha256(file)), "SHA-256 calculated");
         require(UpdateService.selectInstaller(java.util.List.of(release.installer()), "other", "x64") == null, "unsupported OS rejected");
+        Path windowsInstaller = Files.createTempFile("AeroMC-update-", ".exe"); Files.writeString(windowsInstaller, "test");
+        var launch = InstallerLauncher.commandFor(windowsInstaller, "windows");
+        require("rundll32.exe".equals(launch.get(0)) && launch.get(2).equals(windowsInstaller.toAbsolutePath().normalize().toString()), "safe Windows installer launch plan");
+        boolean wrongPlatformRejected = false;
+        try { InstallerLauncher.commandFor(windowsInstaller, "macos"); } catch (java.io.IOException expected) { wrongPlatformRejected = true; }
+        require(wrongPlatformRejected, "wrong installer extension rejected");
         System.out.println("application-update-service-ok");
     }
     private static void require(boolean condition, String feature) { if (!condition) throw new IllegalStateException("Smoke test failed: " + feature); }

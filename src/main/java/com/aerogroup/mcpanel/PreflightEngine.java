@@ -29,13 +29,17 @@ public final class PreflightEngine {
     private PreflightEngine() { }
 
     public static Report inspect(Path jar, int memoryMb) {
+        return inspect(jar, memoryMb, null);
+    }
+
+    public static Report inspect(Path jar, int memoryMb, Path preferredJava) {
         List<Issue> issues = new ArrayList<>();
         if (jar == null || !Files.isRegularFile(jar)) {
             issues.add(new Issue(Severity.CRITICAL, "Sunucu JAR", "Geçerli bir server.jar seçilmedi.", false));
             return new Report(List.copyOf(issues));
         }
         Path folder = jar.toAbsolutePath().normalize().getParent();
-        inspectJar(jar, issues); inspectJava(folder, issues); inspectEula(folder, issues); inspectPort(folder, issues);
+        inspectJar(jar, issues); inspectJava(folder, preferredJava, issues); inspectEula(folder, issues); inspectPort(folder, issues);
         inspectMemory(memoryMb, issues); inspectDisk(folder, issues); inspectBackup(folder, issues); inspectContent(folder, issues);
         if (issues.isEmpty()) issues.add(new Issue(Severity.OK, "Başlatma kontrolü", "Belirgin bir sorun bulunmadı; sunucu başlatılabilir.", false));
         return new Report(List.copyOf(issues));
@@ -44,7 +48,7 @@ public final class PreflightEngine {
     public static void applySafeFixes(Path jar, Report report) throws IOException {
         if (jar == null || jar.getParent() == null) return;
         if (report.issues.stream().anyMatch(issue -> issue.fixable && "Minecraft EULA".equals(issue.title))) {
-            Files.writeString(jar.toAbsolutePath().getParent().resolve("eula.txt"), "eula=true" + System.lineSeparator(), StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            MinecraftEula.writeAccepted(jar.toAbsolutePath().getParent());
         }
     }
 
@@ -54,9 +58,9 @@ public final class PreflightEngine {
         } catch (Exception error) { issues.add(new Issue(Severity.CRITICAL, "Sunucu JAR", "Dosya bozuk veya okunamıyor: " + message(error), false)); }
     }
 
-    private static void inspectJava(Path folder, List<Issue> issues) {
+    private static void inspectJava(Path folder, Path preferredJava, List<Issue> issues) {
         JavaRuntimeResolver.RuntimeInfo runtime;
-        try { runtime = JavaRuntimeResolver.resolve(); }
+        try { runtime = JavaRuntimeResolver.resolve(preferredJava); }
         catch (IOException error) { issues.add(new Issue(Severity.CRITICAL, "Java çalıştırıcısı", error.getMessage(), false)); return; }
         Properties metadata = load(folder.resolve(".aeromc-server.properties")); String version = metadata.getProperty("minecraftVersion", "").trim();
         if (version.isEmpty()) {
@@ -70,7 +74,7 @@ public final class PreflightEngine {
 
     private static void inspectEula(Path folder, List<Issue> issues) {
         Properties eula = load(folder.resolve("eula.txt"));
-        if (!Boolean.parseBoolean(eula.getProperty("eula", "false"))) issues.add(new Issue(Severity.CRITICAL, "Minecraft EULA", "eula=true değil. Açmak için EULA'yı açıkça kabul etmelisin.", true));
+        if (!Boolean.parseBoolean(eula.getProperty("eula", "false"))) issues.add(new Issue(Severity.CRITICAL, "Minecraft EULA", "eula=true değil. Devam etmeden önce güncel resmî EULA'yı okuyup açıkça kabul etmelisin: " + MinecraftEula.EULA_URL, true));
     }
 
     private static void inspectPort(Path folder, List<Issue> issues) {

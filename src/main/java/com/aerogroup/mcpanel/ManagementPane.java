@@ -63,9 +63,9 @@ public final class ManagementPane {
         button.setOnAction(event -> managePlayer(operation, confirm)); return button;
     }
     private void managePlayer(String operation, boolean needsConfirmation) {
-        String username = player.getText().trim(); if (username.isEmpty()) { error("Oyuncu adını gir."); return; }
+        String username; try { username = CommandSecurity.playerName(player.getText()); } catch (IllegalArgumentException invalid) { error(invalid.getMessage()); return; }
         if (needsConfirmation) { Alert confirm = new Alert(Alert.AlertType.CONFIRMATION, username + " için “" + operation + "” işlemi uygulansın mı?", ButtonType.YES, ButtonType.NO); if (confirm.showAndWait().orElse(ButtonType.NO) != ButtonType.YES) return; }
-        String providerName = provider.getValue(), detail = reason.getText().trim();
+        String providerName = provider.getValue(), detail; try { detail = CommandSecurity.singleLine(reason.getText(), 160); } catch (IllegalArgumentException invalid) { error(invalid.getMessage()); return; }
         Task<Void> task = new Task<>() { protected Void call() throws Exception { if (providerName.equals("Yerel JAR")) localOperation(operation, username, detail); else remoteOperation(operation, username, detail); return null; } };
         task.setOnSucceeded(event -> log("BAŞARILI", providerName, operation, username)); task.setOnFailed(event -> { log("HATA", providerName, operation, username); error(rootMessage(task.getException())); }); run(task, "player-admin");
     }
@@ -100,7 +100,7 @@ public final class ManagementPane {
     private Map<String, Object> formValues() { Map<String, Object> values = new LinkedHashMap<>(); values.put("motd", motd.getText()); values.put("max-players", maxPlayers.getValue()); values.put("gamemode", gamemode.getValue()); values.put("difficulty", difficulty.getValue()); values.put("pvp", pvp.isSelected()); values.put("white-list", whitelist.isSelected()); return values; }
     private Map<String, Object> loadLocalSettings() throws Exception {
         Path folder = local.getServerFolder(); if (folder == null) throw new IllegalStateException("Önce Yerel JAR sekmesinden server.jar seç.");
-        Path file = folder.resolve("server.properties"); if (!Files.exists(file)) throw new IllegalStateException("server.properties bulunamadı. Sunucuyu en az bir kez başlat.");
+        Path file = SafePathGuard.resolve(folder, "server.properties", true); if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) throw new IllegalStateException("server.properties bulunamadı. Sunucuyu en az bir kez başlat.");
         Properties properties = new Properties(); try (var reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) { properties.load(reader); }
         Map<String, Object> values = new LinkedHashMap<>(); values.put("motd", properties.getProperty("motd", "A Minecraft Server")); values.put("max-players", Integer.parseInt(properties.getProperty("max-players", "20"))); values.put("gamemode", properties.getProperty("gamemode", "survival")); values.put("difficulty", properties.getProperty("difficulty", "easy")); values.put("pvp", Boolean.parseBoolean(properties.getProperty("pvp", "true"))); values.put("white-list", Boolean.parseBoolean(properties.getProperty("white-list", "false"))); return values;
     }
@@ -109,7 +109,7 @@ public final class ManagementPane {
         for (String key : List.of("motd", "max-players", "gamemode", "difficulty", "pvp", "white-list")) if (options.containsKey(key)) values.put(key, options.get(key).getValue()); return values;
     }
     private void saveLocalSettings(Map<String, Object> values) throws Exception {
-        Path folder = local.getServerFolder(); if (folder == null) throw new IllegalStateException("Önce Yerel JAR sekmesinden server.jar seç."); Path file = folder.resolve("server.properties");
+        Path folder = local.getServerFolder(); if (folder == null) throw new IllegalStateException("Önce Yerel JAR sekmesinden server.jar seç."); Path file = SafePathGuard.resolve(folder, "server.properties", true);
         List<String> lines = Files.exists(file) ? Files.readAllLines(file, StandardCharsets.UTF_8) : new ArrayList<>(); Set<String> written = new HashSet<>(); List<String> output = new ArrayList<>();
         for (String line : lines) { int equals = line.indexOf('='); String key = equals > 0 && !line.stripLeading().startsWith("#") ? line.substring(0, equals).trim() : ""; if (values.containsKey(key)) { output.add(key + "=" + values.get(key)); written.add(key); } else output.add(line); }
         values.forEach((key, value) -> { if (!written.contains(key)) output.add(key + "=" + value); }); Files.createDirectories(folder); Path temporary = Files.createTempFile(folder, "server-properties-", ".tmp"); Files.write(temporary, output, StandardCharsets.UTF_8); try { Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); } catch (AtomicMoveNotSupportedException ignored) { Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING); }

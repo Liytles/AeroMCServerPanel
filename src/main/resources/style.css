@@ -60,6 +60,16 @@
 .text-field, .spinner, .list-view, .combo-box { -fx-background-color: #0f1921; -fx-control-inner-background: #0f1921; -fx-text-fill: #deebf0; -fx-prompt-text-fill: #657984; -fx-border-color: #2a3b47; -fx-border-radius: 6; -fx-background-radius: 6; }
 .combo-box .list-cell, .combo-box-popup .list-view, .combo-box-popup .list-cell { -fx-background-color: #0f1921; -fx-text-fill: #deebf0; }
 .combo-box-popup .list-cell:hover { -fx-background-color: #21495e; }
+.context-menu { -fx-background-color: #15212b; -fx-border-color: #38505f; -fx-border-radius: 6; -fx-background-radius: 6; }
+.context-menu .menu-item { -fx-background-color: transparent; }
+.context-menu .menu-item .label { -fx-text-fill: #dce8ee; }
+.context-menu .menu-item:focused { -fx-background-color: #21495e; }
+.context-menu .check-menu-item:checked > .left-container > .check { -fx-background-color: #55b9ea; }
+.dialog-pane { -fx-background-color: #111a22; }
+.dialog-pane .header-panel { -fx-background-color: #15212b; }
+.dialog-pane .header-panel .label { -fx-text-fill: #eef8fc; }
+.dialog-pane > .button-bar > .container { -fx-background-color: #111a22; }
+.notification-digest { -fx-background-color: #102634; -fx-text-fill: #55c6f3; -fx-padding: 8 10; -fx-background-radius: 7; -fx-font-weight: bold; }
 .check-box { -fx-text-fill: #dce8ee; }
 .check-box .box { -fx-background-color: #0f1921; -fx-border-color: #38505f; -fx-border-radius: 4; -fx-background-radius: 4; }
 .check-box:selected .mark { -fx-background-color: white; }
@@ -97,3 +107,13 @@
 .server-card { -fx-padding: 15; -fx-background-color: #15212b; -fx-background-radius: 10; -fx-border-color: #263642; -fx-border-radius: 10; }
 .server-card-title { -fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #e4eef3; }
 .metric-small { -fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #55b9ea; }
+.notification-item { -fx-padding: 2 4; }
+.notification-center { -fx-border-color: #2d5264; }
+.notification-center .list-view { -fx-background-insets: 0; }
+.notification-unread { -fx-font-weight: 900; -fx-text-fill: #eef8fc; }
+.notification-read { -fx-font-weight: bold; -fx-text-fill: #9eb0ba; }
+.notification-meta { -fx-font-size: 10px; -fx-text-fill: #55b9ea; }
+.notification-message { -fx-font-size: 12px; -fx-text-fill: #879ba6; }
+.tour-card { -fx-padding: 28; -fx-min-height: 350; }
+.tour-title { -fx-font-size: 25px; -fx-font-weight: 900; -fx-text-fill: #eef8fc; }
+.tour-body { -fx-font-size: 14px; -fx-line-spacing: 5; -fx-text-fill: #a9bbc7; -fx-min-height: 120; }

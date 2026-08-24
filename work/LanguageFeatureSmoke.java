@@ -20,18 +20,26 @@ public final class LanguageFeatureSmoke {
         config.setAutomaticCredentialVaultEnabled(true);
         config.setExarotonReadinessCheckEnabled(false);
         config.setAutomaticUpdateCheckEnabled(false);
+        config.setFeatureTourCompleted(true);
         config.setUpdateChannel("beta");
         config.setCrisisModeEnabled(true);
         config.setCrisisTpsThreshold(15.5);
         config.setCrisisRamThreshold(92);
+        config.setCrisisTriggerSeconds(14);
+        config.setCrisisRecoverySeconds(45);
+        config.setCrisisCooldownSeconds(120);
         config.save();
         require(PanelConfig.load().isLiveMapEnabled(), "enabled live-map preference");
         require(PanelConfig.load().isAutomaticCredentialVaultEnabled(), "automatic credential-vault preference");
         require(!PanelConfig.load().isExarotonReadinessCheckEnabled(), "disabled Exaroton readiness preference");
         require(!PanelConfig.load().isAutomaticUpdateCheckEnabled(), "disabled automatic update preference");
+        require(PanelConfig.load().isFeatureTourCompleted(), "completed feature-tour preference");
         require("beta".equals(PanelConfig.load().getUpdateChannel()), "beta update channel preference");
         require(PanelConfig.load().isCrisisModeEnabled(), "enabled crisis-mode preference");
         require(PanelConfig.load().getCrisisTpsThreshold() == 15.5, "crisis TPS preference");
+        require(PanelConfig.load().getCrisisTriggerSeconds() == 14, "crisis trigger preference");
+        require(PanelConfig.load().getCrisisRecoverySeconds() == 45, "crisis recovery preference");
+        require(PanelConfig.load().getCrisisCooldownSeconds() == 120, "crisis cooldown preference");
 
         System.out.println("language-and-live-map-ok");
     }

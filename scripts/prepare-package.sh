@@ -20,6 +20,7 @@ fi
 "${MAVEN_COMMAND[@]}" clean package
 install -m 0644 "$ROOT_DIR/target/AeroMC.jar" "$ROOT_DIR/target/package-input/AeroMC.jar"
 install -m 0644 "$ROOT_DIR/LICENSE.txt" "$ROOT_DIR/target/package-input/LICENSE.txt"
+install -m 0644 "$ROOT_DIR/INSTALLER-EULA.txt" "$ROOT_DIR/target/package-input/INSTALLER-EULA.txt"
 install -m 0644 "$ROOT_DIR/THIRD-PARTY-NOTICES.md" "$ROOT_DIR/target/package-input/THIRD-PARTY-NOTICES.md"
 
 test -f "$ROOT_DIR/target/package-input/AeroMC.jar"

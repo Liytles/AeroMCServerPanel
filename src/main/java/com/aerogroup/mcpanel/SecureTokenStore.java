@@ -29,6 +29,7 @@ public final class SecureTokenStore {
         values.setProperty("version", "1"); values.setProperty("iterations", Integer.toString(ITERATIONS));
         values.setProperty("salt", Base64.getEncoder().encodeToString(salt)); values.setProperty("iv", Base64.getEncoder().encodeToString(iv)); values.setProperty("data", Base64.getEncoder().encodeToString(encrypted));
         Files.createDirectories(FILE.getParent());
+        try { Files.setPosixFilePermissions(FILE.getParent(), PosixFilePermissions.fromString("rwx------")); } catch (UnsupportedOperationException ignored) { }
         try (var writer = Files.newBufferedWriter(FILE, StandardCharsets.UTF_8)) { values.store(writer, "Encrypted AeroMC credential"); }
         try { Files.setPosixFilePermissions(FILE, PosixFilePermissions.fromString("rw-------")); } catch (UnsupportedOperationException ignored) { }
         Arrays.fill(encrypted, (byte) 0); Arrays.fill(salt, (byte) 0); Arrays.fill(iv, (byte) 0);

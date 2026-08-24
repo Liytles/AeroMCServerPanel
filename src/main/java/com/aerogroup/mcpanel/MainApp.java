@@ -1,6 +1,7 @@
 package com.aerogroup.mcpanel;
 
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.scene.Parent;
 import javafx.scene.image.Image;
@@ -17,6 +18,7 @@ public final class MainApp extends Application {
         scene.getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
         try (var icon = getClass().getResourceAsStream("/icons/aeromc.png")) { if (icon != null) stage.getIcons().add(new Image(icon)); } catch (Exception ignored) { }
         stage.setTitle("AeroMC Server Panel • " + BuildInfo.displayVersion()); stage.setMinWidth(920); stage.setMinHeight(620); stage.setScene(scene); stage.show();
+        Platform.runLater(() -> controller.showFeatureTourIfNeeded(stage));
         stage.setOnCloseRequest(event -> controller.shutdown());
     }
     public static void main(String[] args) { AppDiagnostics.install(); launch(args); }

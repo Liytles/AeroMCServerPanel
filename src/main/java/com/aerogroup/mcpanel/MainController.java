@@ -16,6 +16,7 @@ import java.util.*;
 
 /** JavaFX arayüzünü sunucu yönetim katmanına bağlar. */
 public final class MainController {
+    private static final String LOCAL_NOTIFICATION_SOURCE = NotificationCenter.serverSource("Yerel JAR", "");
     private final PanelConfig config = PanelConfig.load();
     private final ConsoleView console = new ConsoleView();
     private final TextField jarPath = new TextField();
@@ -47,14 +48,14 @@ public final class MainController {
         aternosPane = new AternosPane(hostServices);
         manager = new ServerManager(new ServerManager.Listener() {
             public void onConsole(String line) { Platform.runLater(() -> console.append(line)); if (proToolsPane != null) proToolsPane.onConsole(line); if (playerMapPane != null) playerMapPane.onLocalConsole(line); }
-            public void onState(boolean running, String text) { Platform.runLater(() -> { updateState(running, text); if (text.toLowerCase().contains("çöktü")) DesktopNotifier.show("Yerel sunucu", text); if (proToolsPane != null) proToolsPane.onState(running, text); }); }
-            public void onPlayers(List<String> names) { Platform.runLater(() -> { for (String name : names) if (!knownPlayers.contains(name)) DesktopNotifier.show("Oyuncu katıldı", name + " sunucuya katıldı."); knownPlayers.clear(); knownPlayers.addAll(names); players.setAll(names); if (proToolsPane != null) proToolsPane.onPlayers(names); if (playerMapPane != null) playerMapPane.onLocalPlayers(names); }); }
-        });
+            public void onState(boolean running, String text) { Platform.runLater(() -> { updateState(running, text); boolean crashed = text.toLowerCase().contains("çöktü"); if (crashed) DesktopNotifier.show(LOCAL_NOTIFICATION_SOURCE, "Yerel sunucu", text); else NotificationCenter.shared().publish(running ? NotificationCenter.Severity.SUCCESS : NotificationCenter.Severity.INFO, LOCAL_NOTIFICATION_SOURCE, "Yerel sunucu durumu", text); if (proToolsPane != null) proToolsPane.onState(running, text); }); }
+            public void onPlayers(List<String> names) { Platform.runLater(() -> { for (String name : names) if (!knownPlayers.contains(name)) DesktopNotifier.show(LOCAL_NOTIFICATION_SOURCE, "Oyuncu katıldı", name + " sunucuya katıldı."); knownPlayers.clear(); knownPlayers.addAll(names); players.setAll(names); if (proToolsPane != null) proToolsPane.onPlayers(names); if (playerMapPane != null) playerMapPane.onLocalPlayers(names); }); }
+        }, config);
         managementPane = new ManagementPane(manager, exarotonPane);
         proToolsPane = new ProToolsPane(manager, exarotonPane, config, hostServices, this::openExarotonAutomation);
         if (config.isLiveMapEnabled()) playerMapPane = new PlayerMapPane(manager, exarotonPane);
         nextGenPane = new NextGenPane(manager, exarotonPane, config, hostServices, this::useInstalledJar);
-        settingsPane = new SettingsPane(config, this::setLiveMapEnabled, this::setAutomaticCredentialVaultEnabled, hostServices);
+        settingsPane = new SettingsPane(config, this::setLiveMapEnabled, this::setAutomaticCredentialVaultEnabled, this::showFeatureTour, hostServices);
         playerRefresh = new Timeline(new KeyFrame(Duration.seconds(15), event -> manager.requestPlayers()));
         playerRefresh.setCycleCount(Animation.INDEFINITE);
     }
@@ -117,7 +118,7 @@ public final class MainController {
         VBox.setVgrow(console, Priority.ALWAYS);
         TextField command = new TextField(); command.setPromptText("Konsol komutu yaz (örnek: say Merhaba)");
         Button send = new Button("Gönder"); send.getStyleClass().add("primary");
-        Runnable sendAction = () -> { String value = command.getText().trim(); if (!value.isEmpty()) { try { manager.command(value); console.append("> " + value); command.clear(); } catch (IOException e) { alert("Komut gönderilemedi", e.getMessage()); } } };
+        Runnable sendAction = () -> { if (sendManualCommand(command.getText())) command.clear(); };
         send.setOnAction(event -> sendAction.run()); command.setOnAction(event -> sendAction.run()); HBox.setHgrow(command, Priority.ALWAYS);
         HBox input = new HBox(8, command, send);
         VBox card = new VBox(10, heading("CANLI KONSOL"), console, input); card.getStyleClass().add("card"); VBox.setVgrow(card, Priority.ALWAYS); return card;
@@ -155,6 +156,15 @@ public final class MainController {
         exarotonPane.setAutomaticCredentialVaultEnabled(enabled);
         if (proToolsPane != null) proToolsPane.setAutomaticCredentialVaultEnabled(enabled);
     }
+    public void showFeatureTourIfNeeded(javafx.stage.Window owner) { if (!config.isFeatureTourCompleted()) showFeatureTour(owner); }
+    private void showFeatureTour() { if (root != null && root.getScene() != null) showFeatureTour(root.getScene().getWindow()); }
+    private void showFeatureTour(javafx.stage.Window owner) {
+        FeatureTour.show(owner, () -> {
+            config.setFeatureTourCompleted(true);
+            try { config.save(); NotificationCenter.shared().publish(NotificationCenter.Severity.SUCCESS, "AeroMC", "Özellik turu tamamlandı", "Turu istediğin zaman Ayarlar → Dil & Arayüz bölümünden tekrar açabilirsin."); }
+            catch (IOException error) { NotificationCenter.shared().publish(NotificationCenter.Severity.WARNING, "AeroMC", "Tur tercihi kaydedilemedi", error.getMessage()); }
+        });
+    }
     private void openExarotonAutomation() {
         if (mainTabs == null || serversTab == null || exarotonProviderTab == null) return; mainTabs.getSelectionModel().select(serversTab);
         if (serversTab.getContent() instanceof TabPane providers) providers.getSelectionModel().select(exarotonProviderTab); exarotonPane.openAutomationTab();
@@ -169,7 +179,7 @@ public final class MainController {
         catch (Exception error) { alert("Başlatma kontrolü yapılamadı", error.getMessage()); }
     }
     private boolean reviewPreflight(Path jar, int ram, boolean starting) throws IOException {
-        PreflightEngine.Report report = PreflightEngine.inspect(jar, ram);
+        PreflightEngine.Report report = PreflightEngine.inspect(jar, ram, config.getJavaExecutable());
         if (starting && !report.hasCritical() && !report.hasWarnings()) return true;
         Dialog<ButtonType> dialog = new Dialog<>(); dialog.setTitle("AeroMC Başlatma Kontrolü");
         String summary = report.hasCritical() ? report.criticalCount() + " kritik sorun • " + report.warningCount() + " uyarı" : report.hasWarnings() ? report.warningCount() + " uyarı bulundu" : "Sunucu başlatmaya hazır";
@@ -178,11 +188,11 @@ public final class MainController {
         Label note = new Label(report.hasCritical() ? "Kritik sorunlar çözülmeden sunucu başlatılmaz." : "Uyarıları inceleyip devam edebilirsin."); note.setWrapText(true); note.getStyleClass().add("muted");
         dialog.getDialogPane().setContent(new VBox(10, note, list)); ButtonType cancel = new ButtonType(starting ? "İptal" : "Kapat", ButtonBar.ButtonData.CANCEL_CLOSE); dialog.getDialogPane().getButtonTypes().add(cancel);
         ButtonType fix = null, launch = null;
-        if (report.hasFixable()) { fix = new ButtonType("EULA'yı Kabul Et ve Düzelt", ButtonBar.ButtonData.APPLY); dialog.getDialogPane().getButtonTypes().add(0, fix); }
+        if (report.hasFixable()) { fix = new ButtonType("Güncel EULA'yı Kabul Et ve Düzelt", ButtonBar.ButtonData.APPLY); dialog.getDialogPane().getButtonTypes().add(0, fix); }
         if (starting && !report.hasCritical()) { launch = new ButtonType(report.hasWarnings() ? "Uyarılarla Başlat" : "Başlat", ButtonBar.ButtonData.OK_DONE); dialog.getDialogPane().getButtonTypes().add(0, launch); }
         Optional<ButtonType> selected = dialog.showAndWait();
         if (fix != null && selected.orElse(null) == fix) {
-            PreflightEngine.applySafeFixes(jar, report); PreflightEngine.Report after = PreflightEngine.inspect(jar, ram);
+            PreflightEngine.applySafeFixes(jar, report); PreflightEngine.Report after = PreflightEngine.inspect(jar, ram, config.getJavaExecutable());
             if (after.hasCritical()) { alert("Kritik sorun devam ediyor", after.issues().stream().filter(issue -> issue.severity() == PreflightEngine.Severity.CRITICAL).map(PreflightEngine.Issue::toString).reduce((a, b) -> a + "\n" + b).orElse("Bilinmeyen sorun")); return false; }
             if (!starting) { new Alert(Alert.AlertType.INFORMATION, "Güvenli düzeltmeler uygulandı.", ButtonType.OK).showAndWait(); return false; }
             return true;
@@ -193,8 +203,8 @@ public final class MainController {
         if (!jarPath.getText().isBlank()) manager.configure(Path.of(jarPath.getText()));
         backup.setDisable(true); status.setText("Yedek alınıyor...");
         Task<Path> task = new Task<>() { protected Path call() throws Exception { return manager.createBackup(); } };
-        task.setOnSucceeded(event -> { backup.setDisable(false); status.setText("Yedek hazır"); console.append("[Panel] Yedek: " + task.getValue()); DesktopNotifier.show("AeroMC", "Sunucu yedeği hazırlandı."); });
-        task.setOnFailed(event -> { backup.setDisable(false); alert("Yedek alınamadı", task.getException().getMessage()); });
+        task.setOnSucceeded(event -> { backup.setDisable(false); status.setText("Yedek hazır"); console.append("[Panel] Yedek: " + task.getValue()); DesktopNotifier.show(LOCAL_NOTIFICATION_SOURCE, "AeroMC", "Sunucu yedeği hazırlandı."); });
+        task.setOnFailed(event -> { backup.setDisable(false); NotificationCenter.shared().publish(NotificationCenter.Severity.CRITICAL, LOCAL_NOTIFICATION_SOURCE, "Yedek alınamadı", task.getException().getMessage()); alert("Yedek alınamadı", task.getException().getMessage()); });
         Thread thread = new Thread(task, "aeromc-backup"); thread.setDaemon(true); thread.start();
     }
     private void configureBackupSchedule(int selection) {
@@ -205,6 +215,17 @@ public final class MainController {
     private void updateState(boolean running, String text) {
         status.setText(text); statusDot.setStyle(running ? "-fx-text-fill:#45d483" : "-fx-text-fill:#ef6b72"); start.setDisable(running); stop.setDisable(!running);
         if (!running) { playerRefresh.stop(); players.clear(); knownPlayers.clear(); }
+    }
+    private boolean sendManualCommand(String value) {
+        try {
+            CommandSecurity.Assessment assessment = CommandSecurity.assess(value);
+            if (assessment.needsConfirmation()) {
+                Alert confirm = new Alert(Alert.AlertType.CONFIRMATION, "Komut: " + assessment.command() + "\n\n" + assessment.reason(), ButtonType.YES, ButtonType.NO);
+                confirm.setHeaderText(LanguageManager.text(assessment.risk() == CommandSecurity.Risk.CRITICAL ? "Kritik konsol komutunu doğrula" : "Konsol komutunu doğrula"));
+                if (confirm.showAndWait().orElse(ButtonType.NO) != ButtonType.YES) return false;
+            }
+            manager.command(assessment.command()); console.append("> " + assessment.command()); return true;
+        } catch (IOException | IllegalArgumentException error) { alert("Komut gönderilemedi", error.getMessage()); return false; }
     }
     private void alert(String title, String message) { Alert alert = new Alert(Alert.AlertType.ERROR, LanguageManager.text(message == null ? "Bilinmeyen hata" : message), ButtonType.OK); alert.setTitle(LanguageManager.text(title)); alert.setHeaderText(LanguageManager.text(title)); alert.showAndWait(); }
     public void shutdown() { playerRefresh.stop(); scheduledBackup.stop(); nextGenPane.shutdown(); if (playerMapPane != null) playerMapPane.shutdown(); if (proToolsPane != null) proToolsPane.shutdown(); manager.shutdown(); exarotonPane.shutdown(); aternosPane.shutdown(); dashboardPane.shutdown(); }

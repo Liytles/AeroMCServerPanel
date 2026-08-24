@@ -11,6 +11,9 @@ public final class HealthFeaturesSmoke {
         require(critical.score() < 35 && "Kritik".equals(critical.state()), "critical score");
         require(ServerHealthEngine.shouldEnterCrisis(14.0, 70, 0, 16, 90), "TPS crisis threshold");
         require(ServerHealthEngine.shouldEnterCrisis(20.0, 94, 0, 16, 90), "RAM crisis threshold");
+        require(!ServerHealthEngine.shouldExitCrisis(16.2, 87, 0, 16, 90), "crisis recovery hysteresis");
+        require(ServerHealthEngine.shouldExitCrisis(17.2, 84, 0, 16, 90), "crisis stable recovery");
+        require(ServerHealthEngine.crisisSignal(14.0, 94, 3, 16, 90).reason().contains("TPS"), "crisis reason detail");
 
         var memory = CrashDoctor.diagnose(List.of("java.lang.OutOfMemoryError: Java heap space", "Crash report saved"));
         require(memory.title().contains("Bellek") && memory.confidence() >= 90, "memory diagnosis");

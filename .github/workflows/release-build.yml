@@ -103,8 +103,14 @@ jobs:
         run: |
           set -euo pipefail
           mapfile -t ASSETS < <(find release-assets -type f \( -name '*.exe' -o -name '*.deb' -o -name '*.dmg' -o -name '*.exe.sha256' -o -name '*.deb.sha256' -o -name '*.dmg.sha256' \) -print | sort)
+          NOTES_FILE="release-notes/$GITHUB_REF_NAME.md"
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            if [[ -f "$NOTES_FILE" ]]; then gh release edit "$GITHUB_REF_NAME" --notes-file "$NOTES_FILE"; fi
             gh release upload "$GITHUB_REF_NAME" "${ASSETS[@]}" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" --verify-tag --generate-notes --title "AeroMC $GITHUB_REF_NAME"
+            if [[ -f "$NOTES_FILE" ]]; then
+              gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" --verify-tag --notes-file "$NOTES_FILE" --title "AeroMC $GITHUB_REF_NAME"
+            else
+              gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" --verify-tag --generate-notes --title "AeroMC $GITHUB_REF_NAME"
+            fi
           fi

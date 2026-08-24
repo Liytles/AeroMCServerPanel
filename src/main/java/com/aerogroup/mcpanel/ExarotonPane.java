@@ -233,6 +233,7 @@ public final class ExarotonPane {
         if (choice == null) { activeServerName.set("Exaroton sunucusu seçilmedi"); return; }
         if (active != null) active.unsubscribe();
         active = choice.server();
+        NotificationCenter.shared().registerServerSource(notificationSource(active));
         activeServerName.set(active.getName());
         latestMemoryPercent = Double.NaN; latestTps = Double.NaN; latestMspt = Double.NaN; activeRamGiB = -1; activeServerOnline = false; updateCreditUi();
         status.setText("Durum alınıyor..."); address.setText(active.getAddress()); playerCount.setText("-"); ram.setText("-");
@@ -254,9 +255,9 @@ public final class ExarotonPane {
         if (active == null || !active.getId().equals(server.getId())) return;
         status.setText(server.getStatus().getName()); address.setText(server.getAddress());
         var info = server.getPlayerInfo();
-        for (String name : info.getList()) if (!knownPlayers.contains(name)) DesktopNotifier.show(server.getName(), name + " sunucuya katıldı.");
+        for (String name : info.getList()) if (!knownPlayers.contains(name)) DesktopNotifier.show(notificationSource(server), server.getName(), name + " sunucuya katıldı.");
         knownPlayers.clear(); knownPlayers.addAll(info.getList()); players.setAll(info.getList()); playerCount.setText(info.getCount() + " / " + info.getMax());
-        if (lastStatus != null && lastStatus != server.getStatus()) { addAutomationEvent(server.getName(), "DURUM", lastStatus.getName() + " → " + server.getStatus().getName()); if (server.hasStatus(ServerStatus.OFFLINE, ServerStatus.CRASHED)) DesktopNotifier.show(server.getName(), "Sunucu " + server.getStatus().getName() + " durumuna geçti."); }
+        if (lastStatus != null && lastStatus != server.getStatus()) { addAutomationEvent(server.getName(), "DURUM", lastStatus.getName() + " → " + server.getStatus().getName()); if (server.hasStatus(ServerStatus.OFFLINE, ServerStatus.CRASHED)) DesktopNotifier.show(notificationSource(server), server.getName(), "Sunucu " + server.getStatus().getName() + " durumuna geçti."); }
         lastStatus = server.getStatus();
         try { server.getRAM().thenAccept(value -> Platform.runLater(() -> { activeRamGiB = value.getRam(); ram.setText(value.getRam() + " GiB"); updateCreditUi(); })); } catch (Exception ignored) { }
         boolean online = server.hasStatus(ServerStatus.ONLINE); boolean offline = server.hasStatus(ServerStatus.OFFLINE, ServerStatus.CRASHED), becameOnline = online && !activeServerOnline;
@@ -408,7 +409,7 @@ public final class ExarotonPane {
     }
     private void evaluateAutomation(ExarotonAutomationEngine.Config config, AutomationObservation observation) {
         Instant now = Instant.now(); if (!observation.status().equals(lastAutomationObservedStatus)) { if (!lastAutomationObservedStatus.isBlank()) addAutomationEvent(observation.server().getName(), "DURUM", lastAutomationObservedStatus + " → " + observation.status()); lastAutomationObservedStatus = observation.status(); }
-        if (observation.online()) { automationRecoveryAttempts = 0; if (waitingForReady) { waitingForReady = false; readyDeadline = null; readyState.setText("Sunucu hazır • " + LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"))); addAutomationEvent(observation.server().getName(), "HAZIR", "Sunucu online ve oyuncu kabul etmeye hazır"); DesktopNotifier.show(observation.server().getName(), "Otomatik başlatma tamamlandı; sunucu hazır."); } }
+        if (observation.online()) { automationRecoveryAttempts = 0; if (waitingForReady) { waitingForReady = false; readyDeadline = null; readyState.setText("Sunucu hazır • " + LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"))); addAutomationEvent(observation.server().getName(), "HAZIR", "Sunucu online ve oyuncu kabul etmeye hazır"); DesktopNotifier.show(notificationSource(observation.server()), observation.server().getName(), "Otomatik başlatma tamamlandı; sunucu hazır."); } }
         else if (waitingForReady && readyDeadline != null && now.isAfter(readyDeadline)) { waitingForReady = false; readyState.setText("Hazır olma süresi aşıldı"); addAutomationEvent(observation.server().getName(), "UYARI", "Sunucu 10 dakika içinde online olmadı"); }
         if (observation.online() && observation.players() == 0) { if (automationEmptySince == null) automationEmptySince = now; } else automationEmptySince = null;
         ExarotonCreditTracker.Stats creditStats = creditTracker.stats(); double weeklySpent = creditTracker.spentThisWeek(); automationBudgetState.setText(String.format(Locale.US, "Bugün %.2f / %.2f kredi  •  Bu hafta %.2f / %.2f kredi", creditStats.spentToday(), dailyBudget.getValue(), weeklySpent, weeklyBudget.getValue()));
@@ -434,8 +435,8 @@ public final class ExarotonPane {
             }
             return confirmed.action().name() + "\t" + confirmed.reason();
         } };
-        task.setOnSucceeded(event -> { automationActionRunning = false; String[] result = task.getValue().split("\\t", 2); String source = result[0], detail = result.length > 1 ? result[1] : expected.reason(); automationState.setText(detail); addAutomationEvent(target.getName(), source.equals("ATLANDI") ? "DOĞRULAMA" : "OTOMASYON", source + " • " + detail); if (source.equals("START") || source.equals("RECOVER")) { waitingForReady = true; readyDeadline = Instant.now().plus(java.time.Duration.ofMinutes(10)); readyState.setText("Sunucunun hazır olması bekleniyor..."); if (source.equals("RECOVER")) automationRecoveryAttempts++; } else if (source.equals("STOP")) { waitingForReady = false; readyState.setText("Sunucu otomasyon tarafından durduruldu"); } if (!source.equals("ATLANDI")) DesktopNotifier.show(target.getName(), detail); refreshFleet(); if (active != null && active.getId().equals(target.getId())) refreshServer(); });
-        task.setOnFailed(event -> { automationActionRunning = false; String detail = "Otomatik işlem başarısız: " + message(task.getException()); automationState.setText(detail); addAutomationEvent(target.getName(), "HATA", detail); DesktopNotifier.show(target.getName(), detail); }); run(task, "exaroton-automation-action");
+        task.setOnSucceeded(event -> { automationActionRunning = false; String[] result = task.getValue().split("\\t", 2); String source = result[0], detail = result.length > 1 ? result[1] : expected.reason(); automationState.setText(detail); addAutomationEvent(target.getName(), source.equals("ATLANDI") ? "DOĞRULAMA" : "OTOMASYON", source + " • " + detail); if (source.equals("START") || source.equals("RECOVER")) { waitingForReady = true; readyDeadline = Instant.now().plus(java.time.Duration.ofMinutes(10)); readyState.setText("Sunucunun hazır olması bekleniyor..."); if (source.equals("RECOVER")) automationRecoveryAttempts++; } else if (source.equals("STOP")) { waitingForReady = false; readyState.setText("Sunucu otomasyon tarafından durduruldu"); } if (!source.equals("ATLANDI")) DesktopNotifier.show(notificationSource(target), target.getName(), detail); refreshFleet(); if (active != null && active.getId().equals(target.getId())) refreshServer(); });
+        task.setOnFailed(event -> { automationActionRunning = false; String detail = "Otomatik işlem başarısız: " + message(task.getException()); automationState.setText(detail); addAutomationEvent(target.getName(), "HATA", detail); DesktopNotifier.show(notificationSource(target), target.getName(), detail); }); run(task, "exaroton-automation-action");
     }
     private void addAutomationEvent(String server, String source, String detail) { automationLog.add(server == null || server.isBlank() ? "-" : server, source, detail); refreshAutomationLog(); }
     private void refreshAutomationLog() {
@@ -524,6 +525,7 @@ public final class ExarotonPane {
     public boolean hasActiveServer() { return active != null; }
     public void openAutomationTab() { if (exarotonTabs != null && exarotonTabs.getTabs().size() > 3) exarotonTabs.getSelectionModel().select(3); }
     public String getActiveServerName() { return activeServerName.get(); }
+    private String notificationSource(Server server) { return NotificationCenter.serverSource("Exaroton", server == null ? "" : server.getName()); }
     public ReadOnlyStringProperty activeServerNameProperty() { return activeServerName.getReadOnlyProperty(); }
     public void addProConsoleListener(Consumer<String> listener) { proConsoleListeners.add(listener); }
     public void addProSnapshotListener(Consumer<ProSnapshot> listener) { proSnapshotListeners.add(listener); }

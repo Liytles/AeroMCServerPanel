@@ -38,7 +38,7 @@ jpackage \
   --icon "$ICON_FILE" \
   --jlink-options "--strip-debug --no-man-pages --no-header-files" \
   --java-options "-Dfile.encoding=UTF-8" \
-  --license-file "$ROOT_DIR/LICENSE.txt" \
+  --license-file "$ROOT_DIR/INSTALLER-EULA.txt" \
   --mac-package-identifier com.aerogroup.aeromc \
   --mac-package-name AeroMC
 

@@ -21,6 +21,12 @@ javac -encoding UTF-8 -cp "$CLASSPATH" -d "$TEST_CLASSES" \
   work/DiscordNotificationSmoke.java \
   work/DeviceCredentialSmoke.java \
   work/UpdateServiceSmoke.java \
+  work/SparkAnalysisSmoke.java \
+  work/NotificationCenterSmoke.java \
+  work/DesktopNotifierSmoke.java \
+  work/ServerAvailabilitySmoke.java \
+  work/SmartInsightsSmoke.java \
+  work/SecurityHardeningSmoke.java \
   work/JavaRuntimeSmoke.java \
   work/PreflightSmoke.java \
   work/LanguageFeatureSmoke.java \
@@ -38,6 +44,12 @@ for TEST in \
   DiscordNotificationSmoke \
   DeviceCredentialSmoke \
   UpdateServiceSmoke \
+  SparkAnalysisSmoke \
+  NotificationCenterSmoke \
+  DesktopNotifierSmoke \
+  ServerAvailabilitySmoke \
+  SmartInsightsSmoke \
+  SecurityHardeningSmoke \
   JavaRuntimeSmoke \
   PreflightSmoke \
   HealthFeaturesSmoke \
