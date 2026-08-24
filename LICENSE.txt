@@ -1,5 +1,5 @@
 AeroMC Server Panel
-Copyright (c) 2026 The Aero Group. All rights reserved.
+Copyright (c) 2026 Liytles. All rights reserved.
 
 This software is provided for installation and use by authorized recipients.
 No right to redistribute, sell, sublicense, modify, or use the source code is
