@@ -9,6 +9,11 @@ foreach ($Command in @("java", "mvn", "jpackage")) {
     }
 }
 
+$JavaVersionLine = ((& java -version 2>&1 | Select-Object -First 1) -join "")
+if ($JavaVersionLine -notmatch '"(?:(1)\.)?([0-9]+)') { throw "Java sürümü okunamadı: $JavaVersionLine" }
+$JavaMajor = [int]$Matches[2]
+if ($JavaMajor -lt 21) { throw "Dağıtım paketi için tam JDK 21 veya üzeri gerekli (bulunan: Java $JavaMajor)." }
+
 mvn -B clean package
 if ($LASTEXITCODE -ne 0) { throw "Maven derlemesi başarısız." }
 
@@ -36,6 +41,7 @@ New-Item -ItemType Directory -Force $OutputDir | Out-Null
   --main-jar AeroMC.jar `
   --main-class com.aerogroup.mcpanel.Launcher `
   --icon (Join-Path $RootDir "packaging\icons\aeromc.ico") `
+  --jlink-options "--strip-debug --no-man-pages --no-header-files" `
   --java-options "-Dfile.encoding=UTF-8" `
   --license-file (Join-Path $RootDir "LICENSE.txt") `
   --win-menu `

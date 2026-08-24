@@ -36,6 +36,7 @@ jpackage \
   --main-jar AeroMC.jar \
   --main-class com.aerogroup.mcpanel.Launcher \
   --icon "$ICON_FILE" \
+  --jlink-options "--strip-debug --no-man-pages --no-header-files" \
   --java-options "-Dfile.encoding=UTF-8" \
   --license-file "$ROOT_DIR/LICENSE.txt" \
   --mac-package-identifier com.aerogroup.aeromc \

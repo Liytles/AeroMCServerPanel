@@ -27,6 +27,7 @@ jpackage \
   --main-jar AeroMC.jar \
   --main-class com.aerogroup.mcpanel.Launcher \
   --icon "$ROOT_DIR/src/main/resources/icons/aeromc.png" \
+  --jlink-options "--strip-debug --no-man-pages --no-header-files" \
   --java-options "-Dfile.encoding=UTF-8" \
   --license-file "$ROOT_DIR/LICENSE.txt" \
   --linux-package-name aeromc \
@@ -35,6 +36,6 @@ jpackage \
   --linux-app-category Game \
   --linux-shortcut
 
-(cd "$OUTPUT_DIR" && sha256sum *.deb > SHA256SUMS.txt && for PACKAGE in *.deb; do sha256sum "$PACKAGE" > "$PACKAGE.sha256"; done)
+(cd "$OUTPUT_DIR" && for PACKAGE in *.deb; do dpkg-deb --contents "$PACKAGE" | grep '/lib/runtime/bin/java$' >/dev/null || { echo "$PACKAGE gömülü java çalıştırıcısını içermiyor." >&2; exit 1; }; done && sha256sum *.deb > SHA256SUMS.txt && for PACKAGE in *.deb; do sha256sum "$PACKAGE" > "$PACKAGE.sha256"; done)
 
 echo "Linux paketi: $OUTPUT_DIR"

@@ -35,7 +35,9 @@ public final class ServerManager {
         if (isRunning()) throw new IllegalStateException("Sunucu zaten çalışıyor.");
         if (jar == null || !Files.isRegularFile(jar)) throw new FileNotFoundException("Geçerli bir server.jar seçilmedi.");
         configure(jar);
-        ProcessBuilder builder = new ProcessBuilder(javaCommand(), "-Xms" + Math.max(512, memoryMb / 2) + "M", "-Xmx" + memoryMb + "M", "-jar", jar.getFileName().toString(), "nogui");
+        JavaRuntimeResolver.RuntimeInfo runtime = JavaRuntimeResolver.resolve();
+        listener.onConsole("[Panel] Minecraft Java " + runtime.feature() + " kullanılıyor: " + runtime.executable() + " (" + runtime.source() + ")");
+        ProcessBuilder builder = new ProcessBuilder(runtime.executable().toString(), "-Xms" + Math.max(512, memoryMb / 2) + "M", "-Xmx" + memoryMb + "M", "-jar", jar.getFileName().toString(), "nogui");
         builder.directory(serverFolder.toFile()).redirectErrorStream(true);
         Process startedProcess = builder.start();
         process = startedProcess;
@@ -52,10 +54,6 @@ public final class ServerManager {
                 if (stillCurrent) listener.onState(false, code == 0 ? "Sunucu kapalı" : "Sunucu çöktü (kod " + code + ")");
             }
         });
-    }
-    private String javaCommand() {
-        Path executable = Path.of(System.getProperty("java.home"), "bin", System.getProperty("os.name").toLowerCase().contains("win") ? "java.exe" : "java");
-        return executable.toString();
     }
     private void readConsole(Process runningProcess) {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(runningProcess.getInputStream()))) {

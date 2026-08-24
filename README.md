@@ -23,7 +23,7 @@ Uygulama genelindeki Türkçe/İngilizce dil tercihi, güvenli otomatik kimlik k
 
 ## AeroMC Güncelleme Merkezi
 
-**Ayarlar → AeroMC Güncelleme Merkezi**, sabitlenmiş `Liytles/AeroMCServerPanel` GitHub Releases kaynağından kararlı veya beta sürümleri denetler. İşletim sistemine uygun `.exe`, `.deb` veya `.dmg` paketini seçer; indirme ilerlemesini ve sürüm notlarını gösterir. Paket yalnızca GitHub HTTPS adresinden indirilir ve aynı yayındaki `<kurucu-adı>.sha256` dosyasıyla SHA-256 doğrulaması geçerse açılabilir. Kullanıcının `.aeromc-panel` ayarları, kimlik kasaları ve Minecraft sunucu klasörleri güncelleme sırasında değiştirilmez.
+**Ayarlar → AeroMC Güncelleme Merkezi**, sabitlenmiş `Liytles/AeroMCServerPanel` GitHub Releases kaynağından kararlı veya beta sürümleri denetler. İşletim sistemine uygun `.exe`, `.deb` veya `.dmg` paketini seçer; indirme ilerlemesini ve sürüm notlarını gösterir. Paket yalnızca GitHub HTTPS adresinden indirilir ve aynı yayındaki `<kurucu-adı>.sha256` dosyasıyla SHA-256 doğrulaması geçerse açılabilir. Kullanıcının `.aeromc-panel` ayarları, kimlik kasaları ve Minecraft sunucu klasörleri güncelleme sırasında değiştirilmez. Kurulum ve kullanıcı-verisi konumlarının tamamı [INSTALLATION-LAYOUT.md](INSTALLATION-LAYOUT.md) içinde açıklanır.
 
 Güncelleme yayınlamak için depo ve Releases alanı anonim kullanıcılar tarafından okunabilir olmalıdır. `pom.xml` sürümünü örneğin `3.1.0` yap, üç platform paketini üret ve `v3.1.0` GitHub Release'ine her kurucuyla birlikte paketleme betiklerinin oluşturduğu eş adlı `.sha256` dosyasını yükle. Private depodaki yayınlar kullanıcı tokenı olmadan okunamadığından masaüstü güncelleme merkezi private Release üzerinden çalışmaz.
 
@@ -165,9 +165,9 @@ Oyuncu ve sunucu seçenekleri için **Yönetim** sekmesini aç. Yerel işlemlerd
 
 Yayın paketleri kendi Java çalışma ortamını içerir; uygulamayı kullanacak kişinin ayrıca Java veya Maven kurmasına gerek yoktur.
 
-- **Windows 10/11:** `AeroMC-3.0.1.exe` dosyasına çift tıkla ve kurulum sihirbazını tamamla.
-- **Ubuntu/Debian Linux:** `aeromc_3.0.1-1_amd64.deb` dosyasına çift tıkla veya paket yöneticisiyle kur.
-- **macOS:** `AeroMC-3.0.1.dmg` dosyasını aç ve AeroMC'yi Applications klasörüne taşı.
+- **Windows 10/11:** `AeroMC-3.0.2.exe` dosyasına çift tıkla ve kurulum sihirbazını tamamla.
+- **Ubuntu/Debian Linux:** `aeromc_3.0.2_amd64.deb` dosyasına çift tıkla veya paket yöneticisiyle kur.
+- **macOS:** `AeroMC-3.0.2.dmg` dosyasını aç ve AeroMC'yi Applications klasörüne taşı.
 
 İlk dağıtımlar imzasızdır. Bu nedenle Windows SmartScreen veya macOS Gatekeeper ilk açılışta yayıncı uyarısı gösterebilir. Herkese açık üretim yayını öncesinde Windows Authenticode sertifikası ile imzalama ve Apple Developer ID ile imzalama/noter onayı yapılmalıdır. Öğrenciyim lan ben nereden bulayim 200 doları. Daha projenin 1 starı bile yok. İsteyen kodları inceleyebilir. Kaynak kodu herkese açık — isteyen inceleyip doğrulayabilir. Ancak bu proje açık kaynak lisansıyla değil, tüm hakları saklı (all rights reserved) bir lisansla yayınlanmıştır: kaynağı kopyalamak, değiştirmek veya yeniden dağıtmak için ayrıca yazılı izin gerekir — bkz. LICENSE.txt 
 
@@ -188,7 +188,7 @@ Geliştirici olarak yerel paket üretmek için:
 .\scripts\package-windows.ps1
 ```
 
-Linux'ta `fakeroot`, Windows'ta WiX Toolset 3 ve her sistemde tam JDK 17+ ile Maven gerekir. Paketler `release/` klasörüne yazılır. Herkese açık Debian yayını için gerçek iletişim adresi `AEROMC_MAINTAINER_EMAIL=destek@alanadiniz` biçiminde verilmelidir; verilmezse yerel paket `aeromc@localhost` kullanır. Beklenmeyen bir uygulama hatasında tanılama kaydı kullanıcı klasöründeki `.aeromc-panel/logs` altında oluşur; bilinen anahtar/parola kalıpları otomatik maskelenir.
+Linux'ta `fakeroot`, Windows'ta WiX Toolset 3 ve her sistemde tam JDK 21+ ile Maven gerekir. Paketler `release/` klasörüne yazılır. Paketleme betikleri jlink'in `--strip-native-commands` varsayılanını kaldırır; böylece AeroMC'nin gömülü Java'sı hem paneli hem de yerel Minecraft alt işlemini çalıştırabilir. Kod önce `AEROMC_JAVA`, sonra gömülü Java, `JAVA_HOME` ve sistem `PATH` sırasıyla kullanılabilir Java arar; Başlatma Kontrolü gerçek seçili Java sürümünü gösterir. Herkese açık Debian yayını için gerçek iletişim adresi `AEROMC_MAINTAINER_EMAIL=destek@alanadiniz` biçiminde verilmelidir; verilmezse yerel paket `aeromc@localhost` kullanır. Beklenmeyen bir uygulama hatasında tanılama kaydı kullanıcı klasöründeki `.aeromc-panel/logs` altında oluşur; bilinen anahtar/parola kalıpları otomatik maskelenir.
 
 Yayın öncesinde [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md), uygulama lisansı [LICENSE.txt](LICENSE.txt) ve bağımlılık bildirimleri [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) kontrol edilmelidir.
 

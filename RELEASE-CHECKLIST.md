@@ -5,7 +5,8 @@
 - [ ] `mvn clean package` succeeds with no compilation errors.
 - [ ] Linux `.deb`, Windows `.exe`, and macOS `.dmg` workflow jobs succeed.
 - [ ] Set a real public `AEROMC_MAINTAINER_EMAIL` for the Debian package.
-- [ ] Package filename and application title show version 3.0.1.
+- [ ] Package filename and application title show version 3.0.2.
+- [ ] Installed runtime contains `bin/java` (`java.exe` on Windows) and a local test server starts from the installed application.
 - [ ] The packaged app starts without a separately installed Java runtime.
 
 ## Clean-machine tests

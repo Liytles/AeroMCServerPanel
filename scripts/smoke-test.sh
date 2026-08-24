@@ -21,6 +21,7 @@ javac -encoding UTF-8 -cp "$CLASSPATH" -d "$TEST_CLASSES" \
   work/DiscordNotificationSmoke.java \
   work/DeviceCredentialSmoke.java \
   work/UpdateServiceSmoke.java \
+  work/JavaRuntimeSmoke.java \
   work/PreflightSmoke.java \
   work/LanguageFeatureSmoke.java \
   work/MapParserSmoke.java \
@@ -37,6 +38,7 @@ for TEST in \
   DiscordNotificationSmoke \
   DeviceCredentialSmoke \
   UpdateServiceSmoke \
+  JavaRuntimeSmoke \
   PreflightSmoke \
   HealthFeaturesSmoke \
   LanguageFeatureSmoke \

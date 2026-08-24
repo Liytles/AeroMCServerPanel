@@ -55,10 +55,17 @@ public final class PreflightEngine {
     }
 
     private static void inspectJava(Path folder, List<Issue> issues) {
+        JavaRuntimeResolver.RuntimeInfo runtime;
+        try { runtime = JavaRuntimeResolver.resolve(); }
+        catch (IOException error) { issues.add(new Issue(Severity.CRITICAL, "Java çalıştırıcısı", error.getMessage(), false)); return; }
         Properties metadata = load(folder.resolve(".aeromc-server.properties")); String version = metadata.getProperty("minecraftVersion", "").trim();
-        if (version.isEmpty()) return;
-        int current = Runtime.version().feature(), required = requiredJava(version);
-        if (current < required) issues.add(new Issue(Severity.CRITICAL, "Java sürümü", "Minecraft " + version + " yaklaşık Java " + required + " gerektiriyor; panel Java " + current + " kullanıyor.", false));
+        if (version.isEmpty()) {
+            issues.add(new Issue(Severity.OK, "Java çalıştırıcısı", "Java " + runtime.feature() + " hazır • " + runtime.source(), false));
+            return;
+        }
+        int current = runtime.feature(), required = requiredJava(version);
+        if (current < required) issues.add(new Issue(Severity.CRITICAL, "Java sürümü", "Minecraft " + version + " yaklaşık Java " + required + " gerektiriyor; seçili Java " + current + ".", false));
+        else issues.add(new Issue(Severity.OK, "Java çalıştırıcısı", "Minecraft " + version + " için Java " + current + " hazır • " + runtime.source(), false));
     }
 
     private static void inspectEula(Path folder, List<Issue> issues) {
