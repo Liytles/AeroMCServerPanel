@@ -42,6 +42,9 @@ AeroMC özellikler kullanıldıkça `~/.aeromc-panel/` altında şu dosyaları o
 | `event-timeline.log` | Kontrol Merkezi olay zaman çizelgesi. |
 | `remote-users.properties` | Uzaktan erişim kullanıcılarının tuzlanmış parola özetleri ve rolleri. |
 | `security.log` | Uzaktan erişim güvenlik/işlem günlüğü. |
+| `remote-tls.p12` | HTTPS uzaktan erişimin RSA özel anahtarı ve yerel sertifikası (PKCS#12). |
+| `remote-tls.secret` | TLS anahtar deposunun rastgele parolası; desteklenen sistemlerde yalnız kullanıcı okuyabilir. |
+| `remote-tls.crt` | Tarayıcıdaki SHA-256 parmak iziyle karşılaştırılabilen açık sertifika. |
 | `logs/crash-*.log` | Maskelenmiş uygulama çökme tanılamaları. |
 | `updates/` | İndirilen ve SHA-256 doğrulaması geçen AeroMC kurulum paketleri. |
 | `exaroton-content-backups/<sunucu>/` | Exaroton mod/eklenti güncellemesi öncesi güvenlik ZIP'leri. |

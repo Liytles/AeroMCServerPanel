@@ -22,6 +22,9 @@ javac -encoding UTF-8 -cp "$CLASSPATH" -d "$TEST_CLASSES" \
   work/DeviceCredentialSmoke.java \
   work/UpdateServiceSmoke.java \
   work/SparkAnalysisSmoke.java \
+  work/CrisisHistorySmoke.java \
+  work/SparkInstallerSmoke.java \
+  work/WeeklyReportSmoke.java \
   work/NotificationCenterSmoke.java \
   work/DesktopNotifierSmoke.java \
   work/ServerAvailabilitySmoke.java \
@@ -45,6 +48,9 @@ for TEST in \
   DeviceCredentialSmoke \
   UpdateServiceSmoke \
   SparkAnalysisSmoke \
+  CrisisHistorySmoke \
+  SparkInstallerSmoke \
+  WeeklyReportSmoke \
   NotificationCenterSmoke \
   DesktopNotifierSmoke \
   ServerAvailabilitySmoke \

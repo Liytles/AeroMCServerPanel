@@ -21,6 +21,11 @@ public final class PreflightSmoke {
             String acceptedEula = Files.readString(root.resolve("eula.txt"));
             require(acceptedEula.contains("eula=true"), "accepted EULA value");
             require(acceptedEula.contains(MinecraftEula.EULA_URL), "current official EULA link is recorded");
+            try (ServerSocket occupied = new ServerSocket(port)) {
+                PreflightEngine.Report conflict = PreflightEngine.inspect(jar, 2048);
+                String detail = conflict.issues().stream().filter(issue -> issue.title().equals("Sunucu portu")).map(PreflightEngine.Issue::detail).findFirst().orElse("");
+                require(conflict.hasCritical() && detail.contains("Minecraft sunucusu hâlâ çalışıyor olabilir"), "occupied port explains likely existing server");
+            }
             require(PreflightEngine.requiredJava("1.20.4") == 17, "Java 17 mapping");
             require(PreflightEngine.requiredJava("1.20.5") == 21, "Java 21 mapping");
             System.out.println("preflight-ok");

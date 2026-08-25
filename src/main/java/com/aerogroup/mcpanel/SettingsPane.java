@@ -8,6 +8,7 @@ import javafx.scene.Parent;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
+import javafx.geometry.Pos;
 
 import java.io.File;
 import java.io.IOException;
@@ -21,9 +22,10 @@ public final class SettingsPane {
     private final Consumer<Boolean> credentialVaultToggle;
     private final Runnable featureTour;
     private final UpdateCenterPane updateCenter;
+    private final HostServices hostServices;
 
     public SettingsPane(PanelConfig config, Consumer<Boolean> liveMapToggle, Consumer<Boolean> credentialVaultToggle, Runnable featureTour, HostServices hostServices) {
-        this.config = config; this.liveMapToggle = liveMapToggle; this.credentialVaultToggle = credentialVaultToggle; this.featureTour = featureTour; this.updateCenter = new UpdateCenterPane(config, hostServices);
+        this.config = config; this.liveMapToggle = liveMapToggle; this.credentialVaultToggle = credentialVaultToggle; this.featureTour = featureTour; this.hostServices = hostServices; this.updateCenter = new UpdateCenterPane(config, hostServices);
     }
 
     public Node buildView() {
@@ -94,6 +96,14 @@ public final class SettingsPane {
         refreshJavaStatus(javaState);
 
         Label organization = note("Sunucu işlemleri Sunucular'da, oyuncu ve yapılandırma işlemleri Yönetim'de, tanılama araçları Kontrol Merkezi'nde, kurulum ve bakım araçları ise Araçlar'da bulunur.");
+        Label publisherText = new Label("Made and Published by");
+        Hyperlink publisherLink = new Hyperlink("Liytles (GitHub)");
+        publisherLink.setTooltip(new Tooltip("AeroMCServerPanel GitHub sayfasını aç"));
+        publisherLink.setOnAction(event -> {
+            try { hostServices.showDocument("https://github.com/Liytles/AeroMCServerPanel"); }
+            catch (Exception error) { showError("GitHub sayfası açılamadı: " + error.getMessage()); }
+        });
+        HBox publisher = new HBox(5, publisherText, publisherLink); publisher.setAlignment(Pos.CENTER); publisher.getStyleClass().add("publisher-footer");
         VBox page = new VBox(14,
                 card("DİL & ARAYÜZ", languageControls, languageNote),
                 securityCard,
@@ -102,7 +112,8 @@ public final class SettingsPane {
                 card("GÜVENLİ KİMLİK BİLGİLERİ", automaticVault, vaultState, vaultNote),
                 card("EXAROTON BAŞLATMA", exarotonReadiness, readinessNote),
                 card("PERFORMANS ÖZELLİKLERİ", liveMap, mapNote),
-                card("ARAYÜZ DÜZENİ", organization));
+                card("ARAYÜZ DÜZENİ", organization),
+                publisher);
         page.setPadding(new Insets(18)); ScrollPane scroll = new ScrollPane(page); scroll.setFitToWidth(true); scroll.getStyleClass().add("control-scroll"); return scroll;
     }
 

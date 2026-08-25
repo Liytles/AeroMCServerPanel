@@ -8,6 +8,8 @@ public final class LanguageFeatureSmoke {
         require("Server offline".equals(LanguageManager.text("Sunucu kapalı")), "exact English translation");
         require("6 players online".equals(LanguageManager.text("6 oyuncu online")), "dynamic English translation");
         require("Create backup".equals(LanguageManager.text("Yedek al")), "combo-box value translation");
+        require("CRISIS MODE HISTORY".equals(LanguageManager.text("KRİZ MODU GEÇMİŞİ")), "crisis history translation");
+        require("Also add Spark (recommended)".equals(LanguageManager.text("Spark'ı da ekle (önerilir)")), "Spark setup translation");
 
         LanguageManager.apply(new Group(), "tr");
         require("Sunucu kapalı".equals(LanguageManager.text("Server offline")), "reverse Turkish translation");

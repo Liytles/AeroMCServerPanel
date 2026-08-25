@@ -2,7 +2,7 @@
 
 **Türkçe** · [English](README.en.md)
 
-> Güncel geliştirme sürümü: **3.0.3** · [Türkçe ve İngilizce sürüm notları](release-notes/v3.0.3.md)
+> Güncel geliştirme sürümü: **3.1.0** · [Türkçe ve İngilizce sürüm notları](release-notes/v3.1.0.md)
 
 Minecraft sunucularını üç sağlayıcı modunda yöneten JavaFX masaüstü paneli:
 
@@ -14,7 +14,7 @@ Exaroton API anahtarı varsayılan olarak yalnızca uygulama belleğinde tutulur
 
 ## Araçlar merkezi
 
-- PaperMC, Fabric ve Vanilla için resmî kaynakları kullanan tek tık sunucu kurulum sihirbazı
+- PaperMC, Fabric ve Vanilla için resmî kaynakları kullanan tek tık sunucu kurulum sihirbazı; 1.21 öncesi Paper/Fabric için isteğe bağlı, özet doğrulamalı Spark kurulumu
 - Güncel [Minecraft EULA](https://aka.ms/MinecraftEULA) ve [Kullanım Kuralları](https://www.minecraft.net/usage-guidelines) bağlantılarıyla açık kullanıcı onayı, Java sürüm kontrolü, RAM aktarımı ve Windows/Linux/macOS başlatma betikleri
 - Survival, SMP, Creative, SkyBlock temeli ve modlu sunucu şablonları
 - `plugin.yml` ve `fabric.mod.json` inceleyen; bozuk JAR, yinelenen kimlik ve eksik bağımlılık bulan uyumluluk tarayıcısı
@@ -34,7 +34,7 @@ Uygulama genelindeki Türkçe/İngilizce dil tercihi, güvenli otomatik kimlik k
 
 Güncelleme yayınlamak için depo ve Releases alanı anonim kullanıcılar tarafından okunabilir olmalıdır. `pom.xml` sürümünü örneğin `3.1.0` yap, üç platform paketini üret ve `v3.1.0` GitHub Release'ine her kurucuyla birlikte paketleme betiklerinin oluşturduğu eş adlı `.sha256` dosyasını yükle. Private depodaki yayınlar kullanıcı tokenı olmadan okunamadığından masaüstü güncelleme merkezi private Release üzerinden çalışmaz.
 
-Uzaktan erişim varsayılan olarak yalnızca `127.0.0.1` üzerinde açılır. LAN seçeneğini sadece güvendiğin özel ağda kullan; bağlantı yerel HTTP olduğundan internete port yönlendirmesi yapma. En az 10 karakterli güçlü bir parola kullan.
+Uzaktan erişim varsayılan olarak yalnızca `127.0.0.1` üzerinde açılır ve TLS 1.2/1.3 ile `https://` üzerinden şifrelenir. LAN seçeneğini sadece güvendiğin özel ağda kullan; internete port yönlendirmesi yapma. En az 10 karakterli güçlü bir parola kullan.
 
 ## Yönetim merkezi özellikleri
 
@@ -115,13 +115,15 @@ Kurulum tamamlandıktan sonra mod veya eklentinin etkinleşmesi için sunucuyu y
 Eski yatay Pro Araçlar sekmeleri, daha rahat bulunabilmeleri için sol menülü **Kontrol Merkezi** altında toplandı. Yerel JAR, Exaroton ve Aternos ekranları da ana menüdeki **Sunucular** bölümüne alındı.
 
 - TPS, RAM, CPU, gecikme, aşırı yük uyarıları ve oturumdaki çökmelerden hesaplanan canlı **0–100 Sunucu Sağlık Puanı**
-- Paper 1.21+ için sadeleştirilmiş **Tek Tık Lag Analizi**: Hızlı/Normal/Detaylı süre seçimi, canlı geri sayım, eksik Spark yönlendirmesi ve yalnızca doğrulanmış `spark.lucko.me` rapor bağlantısını otomatik yakalayıp açma
+- Sadeleştirilmiş **Tek Tık Lag Analizi**: Hızlı/Normal/Detaylı süre seçimi, canlı geri sayım, yalnızca doğrulanmış `spark.lucko.me` rapor bağlantısını yakalama ve iki rapor arasında gerçek 5 saniyelik Spark TPS değişimini gösterme
 - Başlatma, çökme, oyuncu, yedek, otomasyon, Kriz Modu ve Spark olaylarını saklayan kopyalanabilir **Olay Zaman Çizelgesi**
 - Kapanma veya çökme öncesindeki son 10 dakikanın TPS, RAM, CPU ve anlamlı konsol belirtilerini Çökme Doktoru tanısıyla tek vakada birleştiren **Olay Zinciri**
 - Sağlık puanını etkileyen nedenleri anlık gösteren Mükemmel / Sağlıklı / Dikkat / Riskli / Kritik durumları
 - Çökmeden önceki son 300 konsol satırını inceleyen; RAM, port, Java, mod, eklenti ve watchdog sorunlarını ayıran **Akıllı Çökme Doktoru**
 - Olası şüpheli JAR, güven yüzdesi, kanıt ve güvenli çözüm sırası
 - Ayarlanabilir TPS/RAM eşikleri, doğrulama süresi, toparlanma süresi ve yeniden tetikleme beklemesiyle otomatik veya elle etkinleştirilebilen **Kriz Modu**
+- Son 10 Kriz Modu tetiklenmesini başlangıç, sunucu, eşikler, neden, süre ve kapanış sonucu ile kalıcı gösteren **Kriz Modu Geçmişi**
+- Aktif sağlayıcıya uyarlanan **Haftalık Rapor Merkezi**: Exaroton'da RAM/kredi tasarrufu ve filo stabilitesi; Yerel JAR'da RAM/CPU özeti, güvenli RAM değerlendirmesi, çalışma ve Kriz Modu süresi; her ikisinde en sık hata ve yeni/dönen/pasif oyuncu istatistikleri. Veri yetmediğinde tahmin uydurmaz
 - Ani ölçüm sıçramalarını eleyen zaman tabanlı tetikleme; çıkışta TPS +1 ve RAM -%5 güvenli pay kullanan kararlı toparlanma denetimi
 - Kriz sırasında zamanlanmış ağır görevleri durdurma, `randomTickSpeed` azaltma ve `view-distance` / `simulation-distance` için güvenli geçici değerler hazırlama; normal ayarlar geri yüklenmeden görevleri yeniden başlatmama
 - Manuel Kriz Modunu yalnızca yöneticinin kapatması; otomatik modda özel tetikleme nedenini ve geri sayımı canlı gösterme
@@ -145,10 +147,11 @@ Eski yatay Pro Araçlar sekmeleri, daha rahat bulunabilmeleri için sol menülü
 
 1. **Araçlar → Uzaktan Erişim** bölümünde kullanıcı adı, en az 10 karakterli parola ve rol seçerek kullanıcı oluştur.
 2. Yalnız bu bilgisayardan kullanacaksan LAN kutusunu kapalı bırak. Telefondan kullanacaksan telefonu aynı Wi-Fi'a bağla ve **Yerel ağdaki telefonlara aç** seçeneğini işaretle.
-3. **Uzaktan Erişimi Başlat** düğmesine bas. Aynı bilgisayarda **Tarayıcıda Aç**, telefonda ise ekranda gösterilen adres kullanılır.
-4. Tarayıcının giriş penceresine oluşturduğun kullanıcı adı ve parolayı yaz.
+3. **Uzaktan Erişimi Başlat** düğmesine bas. AeroMC ilk kullanımda cihazda RSA-3072 yerel TLS kimliği oluşturur ve `https://` adresini gösterir.
+4. Yerel sertifika herkese açık bir sertifika otoritesinden gelmediği için tarayıcı ilk bağlantıda uyarı gösterebilir. Tarayıcıdaki SHA-256 parmak izini AeroMC'deki değerle karşılaştır; eşleşiyorsa devam et.
+5. Tarayıcının giriş penceresine oluşturduğun kullanıcı adı ve parolayı yaz.
 
-`VIEWER` yalnızca durumu görür, `MODERATOR` mesaj/kick/ban kullanabilir, `ADMIN` ise başlatma, durdurma, yeniden başlatma, yedek ve düşük riskli genel konsol komutlarına erişebilir. Yetki, dünya veya çalışma durumunu değiştiren riskli komutlar genel uzaktan komut alanında engellenir. LAN erişimini yalnızca güvendiğin özel ağda kullan; internete port yönlendirmesi yapma.
+`VIEWER` yalnızca durumu görür, `MODERATOR` mesaj/kick/ban kullanabilir, `ADMIN` ise başlatma, durdurma, yeniden başlatma, yedek ve düşük riskli genel konsol komutlarına erişebilir. Yetki, dünya veya çalışma durumunu değiştiren riskli komutlar genel uzaktan komut alanında engellenir. Basic Auth parolası ve bütün istekler TLS içinde taşınır; düz HTTP aynı portta kabul edilmez. LAN erişimini yalnızca güvendiğin özel ağda kullan ve internete port yönlendirmesi yapma.
 
 **Güvenlik Günlüğü**, hatalı girişleri, geçici IP engellerini, oluşturulan/silinen kullanıcıları ve uzaktan gönderilen yönetim işlemlerini zaman, kullanıcı, olay, hedef ve sonuç sütunlarıyla gösterir. Parolalar ve API anahtarları günlüğe yazılmaz.
 
@@ -184,9 +187,9 @@ Oyuncu ve sunucu seçenekleri için **Yönetim** sekmesini aç. Yerel işlemlerd
 
 Yayın paketleri kendi Java çalışma ortamını içerir; uygulamayı kullanacak kişinin ayrıca Java veya Maven kurmasına gerek yoktur.
 
-- **Windows 10/11:** `AeroMC-3.0.3.exe` dosyasına çift tıkla ve kurulum sihirbazını tamamla.
-- **Ubuntu/Debian Linux:** `aeromc_3.0.3_amd64.deb` dosyasına çift tıkla veya paket yöneticisiyle kur.
-- **macOS:** `AeroMC-3.0.3.dmg` dosyasını aç ve AeroMC'yi Applications klasörüne taşı.
+- **Windows 10/11:** `AeroMC-3.1.0.exe` dosyasına çift tıkla ve kurulum sihirbazını tamamla.
+- **Ubuntu/Debian Linux:** `aeromc_3.1.0_amd64.deb` dosyasına çift tıkla veya paket yöneticisiyle kur.
+- **macOS:** `AeroMC-3.1.0.dmg` dosyasını aç ve AeroMC'yi Applications klasörüne taşı.
 
 İlk dağıtımlar imzasızdır. Bu nedenle Windows SmartScreen veya macOS Gatekeeper ilk açılışta yayıncı uyarısı gösterebilir. Kaynak kodu herkese açıktır ve isteyen kullanıcı paketi kaynakla karşılaştırabilir. Kod imzalama sertifikaları edinildiğinde Windows Authenticode ile imzalama ve Apple Developer ID ile imzalama/noter onayı yayın sürecine eklenecektir. Proje açık kaynak lisansıyla değil, tüm hakları saklı (all rights reserved) bir lisansla yayınlanmıştır; kaynağı kopyalamak, değiştirmek veya yeniden dağıtmak için ayrıca yazılı izin gerekir — bkz. [LICENSE.txt](LICENSE.txt).
 

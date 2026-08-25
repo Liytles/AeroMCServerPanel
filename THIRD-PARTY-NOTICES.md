@@ -11,9 +11,10 @@ application license.
 - **Gson 2.12.1** — Apache License 2.0:
   <https://github.com/google/gson>
 - **SLF4J 2.0.17** — MIT License: <https://www.slf4j.org/license.html>
+- **Bouncy Castle Java 1.85 / 1.85.2** — Bouncy Castle License:
+  <https://www.bouncycastle.org/about/license/>
 - **Eclipse Temurin / OpenJDK runtime** — the runtime bundled by the official
   release workflow is distributed under its applicable OpenJDK and Temurin
   licenses: <https://adoptium.net/about/licensing-policy/>
 
 No affiliation or endorsement by these projects is implied.
-

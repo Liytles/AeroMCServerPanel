@@ -35,4 +35,17 @@ public final class SparkAnalysisEngine {
         String value = Objects.toString(line, "").toLowerCase(Locale.ROOT);
         return value.contains("unknown command") || value.contains("unknown or incomplete command") || value.contains("incorrect argument");
     }
+
+    public static boolean tpsHeader(String line) {
+        return Objects.toString(line, "").toLowerCase(Locale.ROOT).contains("tps from last 5s");
+    }
+
+    /** Spark'ın TPS başlığından sonraki satırındaki ilk (son 5 saniye) TPS değerini okur. */
+    public static OptionalDouble fiveSecondTps(String line) {
+        String value = Objects.toString(line, "").replace("*", "");
+        Matcher matcher = Pattern.compile("(?<![\\d.])(\\d{1,2}(?:\\.\\d+)?)(?![\\d.])").matcher(value); List<Double> numbers = new ArrayList<>();
+        while (matcher.find()) { double number = Double.parseDouble(matcher.group(1)); if (number >= 0 && number <= 20.1) numbers.add(number); }
+        if (numbers.size() < 5) return OptionalDouble.empty();
+        return OptionalDouble.of(numbers.get(numbers.size() - 5));
+    }
 }

@@ -2,7 +2,7 @@
 
 [Türkçe](README.md) · **English**
 
-> Current development release: **3.0.3** · [Release notes in English and Turkish](release-notes/v3.0.3.md)
+> Current development release: **3.1.0** · [Release notes in English and Turkish](release-notes/v3.1.0.md)
 
 AeroMC is a JavaFX desktop application for managing Minecraft servers through three provider modes:
 
@@ -18,7 +18,7 @@ Aternos browser automation is deliberately not used because it would violate the
 - First-launch feature tour and a persistent Notification Center
 - Local, Exaroton, and Aternos server views organized under one Servers area
 - Health score, Crisis Mode, Crash Doctor, incident chains, and smart threshold suggestions
-- One-click Spark lag analysis for Paper 1.21+ servers
+- One-click Spark lag analysis with persistent TPS comparisons and optional verified Spark setup for pre-1.21 Paper/Fabric servers
 - Exaroton readiness checks, fleet view, credit protection, schedules, budgets, and crash recovery
 - Discord embeds, event filters, role mentions, retry handling, and encrypted webhook storage
 - One-click Modrinth installation, dependency resolution, SHA-512 verification, update scanning, and rollback
@@ -27,7 +27,7 @@ Aternos browser automation is deliberately not used because it would violate the
 
 ## Setup and server templates
 
-The one-click server wizard downloads Paper, Fabric, or Vanilla only from their official sources. It provides Survival, SMP, Creative, SkyBlock starter, and modded-server templates, carries RAM settings into launch scripts, and checks the required Java version.
+The one-click server wizard downloads Paper, Fabric, or Vanilla only from their official sources. It provides Survival, SMP, Creative, SkyBlock starter, and modded-server templates, carries RAM settings into launch scripts, and checks the required Java version. For Paper or Fabric versions before 1.21, an optional **Add Spark** box resolves a compatible build and verifies its official checksum before placing it in `plugins` or `mods`. Paper 1.21+ already bundles Spark.
 
 The wizard links directly to the current official [Minecraft EULA](https://aka.ms/MinecraftEULA) and [Minecraft Usage Guidelines](https://www.minecraft.net/usage-guidelines). AeroMC writes `eula=true` only after the user explicitly checks the acceptance box. The EULA text is not embedded as a stale copy in the application.
 
@@ -51,12 +51,14 @@ On Linux, desktop notifications use `notify-send` without mixing AWT SystemTray 
 
 - Live 0–100 health score based on TPS, RAM, CPU, latency, overload warnings, and crashes
 - Time-based Crisis Mode with configurable TPS/RAM thresholds, trigger duration, recovery duration, and cooldown
+- Persistent history for the latest 10 Crisis Mode sessions, including source, thresholds, trigger reason, duration, and exit result
+- A provider-aware **Weekly Report Center**: conservative RAM/credit savings and fleet stability for Exaroton; RAM/CPU bands, safe RAM guidance, observed runtime, and Crisis Mode duration for Local JAR; plus recurring-error guidance and new/returning/dormant player statistics without fabricating missing data
 - Recovery hysteresis (+1 TPS and -5% RAM), task pausing, temporary safe settings, and controlled restoration
 - Smart threshold suggestions based on seven days of sparse performance history and applied only after user approval
 - Crash Doctor analysis of the last 300 console lines for memory, port, Java, mod, plugin, and watchdog failures
 - Incident chains that group the final 10 minutes of TPS, RAM, CPU, console symptoms, and diagnosis
 - Crash Loop Shield that blocks automatic restart for 15 minutes after the third local crash in five minutes
-- One-click Spark profiling with Quick, Normal, and Detailed durations and automatic capture of verified `spark.lucko.me` reports
+- One-click Spark profiling with Quick, Normal, and Detailed durations, verified report capture, and real five-second TPS comparison against the previous report
 - Player achievement cards built from play time, joins, deaths, and advancements
 
 ## Exaroton management
@@ -86,12 +88,15 @@ The safe file editor limits editing to known server configuration files, creates
 
 ## Remote access
 
-Create a user under **Tools → Remote Access**, choose the `VIEWER`, `MODERATOR`, or `ADMIN` role, and start the service. It binds to `127.0.0.1` by default. Enable LAN access only for a trusted private network and never port-forward its local HTTP port to the internet.
+Create a user under **Tools → Remote Access**, choose the `VIEWER`, `MODERATOR`, or `ADMIN` role, and start the service. It binds to `127.0.0.1` by default and accepts only `https://` connections using TLS 1.2 or 1.3. Enable LAN access only for a trusted private network and never port-forward it to the internet.
+
+On first use AeroMC creates a persistent RSA-3072 self-signed device certificate. Browsers may show a warning because it is not issued by a public certificate authority; compare the browser's SHA-256 fingerprint with the value displayed by AeroMC before proceeding. Plain HTTP is not accepted on the service port.
 
 - Passwords use PBKDF2-HMAC-SHA256 hashes.
 - Failed logins and actions are rate-limited and recorded without secrets.
 - POST actions require CSRF tokens and have a 4 KiB body limit and 30-action-per-minute IP limit.
 - The page uses a nonce-based Content Security Policy, anti-framing headers, no-store caching, and no-referrer policy.
+- Basic Auth credentials, status data, and actions travel inside TLS; the certificate and private-key store stay in the local AeroMC data directory with restricted permissions where supported.
 - Generic remote console input permits only low-risk commands; sensitive management actions use dedicated role-checked endpoints.
 
 ## Security Shield
@@ -122,9 +127,9 @@ On first launch, choose a local `server.jar`, Paper server JAR, or Fabric server
 
 Release packages include their own Java runtime; end users do not need to install Java or Maven.
 
-- **Windows 10/11:** run `AeroMC-3.0.3.exe`.
-- **Ubuntu/Debian:** open `aeromc_3.0.3_amd64.deb` or install it with a package manager.
-- **macOS:** open `AeroMC-3.0.3.dmg` and move AeroMC to Applications.
+- **Windows 10/11:** run `AeroMC-3.1.0.exe`.
+- **Ubuntu/Debian:** open `aeromc_3.1.0_amd64.deb` or install it with a package manager.
+- **macOS:** open `AeroMC-3.1.0.dmg` and move AeroMC to Applications.
 
 Early packages are unsigned and may trigger Windows SmartScreen or macOS Gatekeeper publisher warnings. Source code is publicly readable for inspection, but the project is distributed under an all-rights-reserved license. Copying, modifying, or redistributing it requires separate written permission; see [LICENSE.txt](LICENSE.txt).
 

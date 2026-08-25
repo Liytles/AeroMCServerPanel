@@ -81,7 +81,7 @@ public final class PreflightEngine {
         Properties properties = load(folder.resolve("server.properties")); int port = number(properties.getProperty("server-port"), 25565);
         if (port < 1 || port > 65535) { issues.add(new Issue(Severity.CRITICAL, "Sunucu portu", "server-port geçersiz: " + port, false)); return; }
         try (ServerSocket socket = new ServerSocket()) { socket.setReuseAddress(false); socket.bind(new InetSocketAddress("0.0.0.0", port)); }
-        catch (IOException error) { issues.add(new Issue(Severity.CRITICAL, "Sunucu portu", port + " portu başka bir uygulama tarafından kullanılıyor.", false)); }
+        catch (IOException error) { issues.add(new Issue(Severity.CRITICAL, "Sunucu portu", port + " portu dolu. Önceki AeroMC'nin başlattığı Minecraft sunucusu hâlâ çalışıyor olabilir; açık AeroMC/sunucu işlemini durdur veya server-port değerini değiştir.", false)); }
     }
 
     private static void inspectMemory(int memoryMb, List<Issue> issues) {

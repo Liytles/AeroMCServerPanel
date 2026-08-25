@@ -13,7 +13,7 @@ final class SecurityAuditEngine {
     record Report(int score, List<Finding> findings) { String state() { return score >= 90 ? "Güçlü" : score >= 70 ? "İyi" : score >= 45 ? "Dikkat" : "Kritik"; } }
 
     private static final Path DATA = Path.of(System.getProperty("user.home"), ".aeromc-panel");
-    private static final List<String> SENSITIVE = List.of("auto-exaroton.secret", "auto-discord.secret", "exaroton.token", "discord-webhook.secret", "remote-users.properties", "security.log", "config.properties");
+    private static final List<String> SENSITIVE = List.of("auto-exaroton.secret", "auto-discord.secret", "exaroton.token", "discord-webhook.secret", "remote-users.properties", "remote-tls.p12", "remote-tls.secret", "security.log", "config.properties");
     private SecurityAuditEngine() { }
 
     static Report scan(PanelConfig config) {
@@ -32,7 +32,7 @@ final class SecurityAuditEngine {
         Path jar = config.getServerJar();
         if (jar != null) try { SafePathGuard.serverJar(jar); findings.add(new Finding(Level.PASS, "Sunucu JAR yolu", "Gerçek dosya doğrulandı; simgesel bağlantı kullanılmıyor.")); }
         catch (IOException error) { score -= 20; findings.add(new Finding(Level.CRITICAL, "Sunucu JAR yolu güvensiz", error.getMessage())); }
-        if (Files.exists(DATA.resolve("remote-users.properties"))) { score -= 4; findings.add(new Finding(Level.WARNING, "Uzaktan erişim kullanıcıları mevcut", "LAN modu HTTP kullanır; yalnızca güvenilen yerel ağda aç ve güçlü parola kullan.")); }
+        if (Files.exists(DATA.resolve("remote-users.properties"))) { score -= 4; findings.add(new Finding(Level.WARNING, "Uzaktan erişim kullanıcıları mevcut", "HTTPS/TLS ağ trafiğini şifreler; yine de yalnızca güvenilen yerel ağda aç, sertifika parmak izini doğrula ve güçlü parola kullan.")); }
         findings.add(new Finding(Level.WARNING, "Güncelleme yayın imzası", "SHA-256 bütünlük doğrulaması etkin; yayıncı kimliğini kanıtlayan sabitlenmiş Ed25519 anahtarı henüz yapılandırılmadı.")); score -= 7;
         return new Report(Math.max(0, score), List.copyOf(findings));
     }

@@ -63,6 +63,7 @@ public final class ExarotonPane {
     private final Timeline fleetRefresh = new Timeline(new KeyFrame(Duration.seconds(20), event -> refreshFleet()));
     private final Timeline automationRefresh = new Timeline(new KeyFrame(Duration.seconds(15), event -> runAutomationCheck()));
     private final ExarotonCreditTracker creditTracker = new ExarotonCreditTracker();
+    private final FleetHealthHistory fleetHealthHistory = new FleetHealthHistory();
     private final XYChart.Series<Number, Number> creditSeries = new XYChart.Series<>();
     private final Label creditCurrent = new Label("-"), creditToday = new Label("-"), creditRate = new Label("-"), creditRemaining = new Label("-"), creditObserved = new Label("Hesap tüketimi için veri bekleniyor"), creditState = new Label("Kredi bağlantısı bekleniyor");
     private final Spinner<Double> lowCreditThreshold = new Spinner<>(0.1, 1000.0, 1.0, 0.1);
@@ -290,7 +291,7 @@ public final class ExarotonPane {
             }
             return result;
         } };
-        task.setOnSucceeded(event -> { fleetRefreshRunning = false; currentFleet = task.getValue(); renderFleet(); }); task.setOnFailed(event -> { fleetRefreshRunning = false; fleetSummary.setText("Filo durumu alınamadı"); }); run(task, "exaroton-fleet-refresh");
+        task.setOnSucceeded(event -> { fleetRefreshRunning = false; currentFleet = task.getValue(); fleetHealthHistory.record(Instant.now(), currentFleet.stream().map(FleetSnapshot::state).toList()); renderFleet(); }); task.setOnFailed(event -> { fleetRefreshRunning = false; fleetSummary.setText("Filo durumu alınamadı"); }); run(task, "exaroton-fleet-refresh");
     }
     private FleetSnapshot fleetSnapshot(Server server, int allocatedRam) {
         var info = server.getPlayerInfo(); boolean online = server.hasStatus(ServerStatus.ONLINE), crashed = server.hasStatus(ServerStatus.CRASHED);
