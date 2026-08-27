@@ -16,8 +16,10 @@ public final class DiscordNotificationEngine {
     public static URI validateWebhook(String value) {
         try {
             URI uri = URI.create(Objects.toString(value, "").trim()); String host = Objects.toString(uri.getHost(), "").toLowerCase(Locale.ROOT), path = Objects.toString(uri.getPath(), "");
-            boolean discordHost = host.equals("discord.com") || host.equals("www.discord.com") || host.equals("discordapp.com") || host.equals("www.discordapp.com");
-            if (!"https".equalsIgnoreCase(uri.getScheme()) || !discordHost || !path.startsWith("/api/webhooks/") || path.split("/").length < 5) throw new IllegalArgumentException("Geçerli bir Discord webhook URL'si gir.");
+            boolean discordHost = host.equals("discord.com") || host.equals("www.discord.com") || host.equals("canary.discord.com") || host.equals("ptb.discord.com") || host.equals("discordapp.com") || host.equals("www.discordapp.com");
+            boolean cleanAuthority = uri.getUserInfo() == null && uri.getPort() == -1 && uri.getQuery() == null && uri.getFragment() == null;
+            boolean webhookPath = path.matches("/api(?:/v\\d+)?/webhooks/\\d{17,20}/[A-Za-z0-9._-]{20,200}");
+            if (!"https".equalsIgnoreCase(uri.getScheme()) || !discordHost || !cleanAuthority || !webhookPath) throw new IllegalArgumentException("Geçerli bir Discord webhook URL'si gir.");
             return uri;
         } catch (IllegalArgumentException error) { throw new IllegalArgumentException("Geçerli bir Discord webhook URL'si gir."); }
     }

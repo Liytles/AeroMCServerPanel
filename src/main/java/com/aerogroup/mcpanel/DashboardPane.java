@@ -109,7 +109,7 @@ public final class DashboardPane {
 
     private final class ServerCard {
         final String serverName, serverAddress; final VBox view = new VBox(8); final Label state = new Label("Kontrol ediliyor..."), playerLabel = new Label("-"), version = new Label("-"), uptime = new Label("-"); final Canvas chart = new Canvas(245, 58); final Deque<Integer> history = new ArrayDeque<>();
-        int lastPlayers = -1; boolean wasOnline = false; Instant onlineSince; final ServerAvailabilityTracker availability = new ServerAvailabilityTracker();
+        int lastPlayers = -1; boolean wasOnline = false, refreshing; Instant onlineSince; final ServerAvailabilityTracker availability = new ServerAvailabilityTracker();
         ServerCard(String name, String address) {
             this.serverName = name; this.serverAddress = address;
             notifications.registerServerSource(notificationSource());
@@ -120,8 +120,9 @@ public final class DashboardPane {
         }
         private VBox metric(String label, Label value) { Label heading = new Label(label); heading.getStyleClass().add("muted"); value.getStyleClass().add("metric-small"); return new VBox(2, heading, value); }
         void refresh() {
+            if (refreshing) return; refreshing = true;
             Task<MinecraftPing.Result> task = new Task<>() { protected MinecraftPing.Result call() throws Exception { return MinecraftPing.ping(serverAddress); } };
-            task.setOnSucceeded(event -> updateOnline(task.getValue())); task.setOnFailed(event -> updateOffline()); Thread thread = new Thread(task, "dashboard-ping"); thread.setDaemon(true); thread.start();
+            task.setOnSucceeded(event -> { refreshing = false; updateOnline(task.getValue()); }); task.setOnFailed(event -> { refreshing = false; updateOffline(); }); Thread thread = new Thread(task, "dashboard-ping"); thread.setDaemon(true); thread.start();
         }
         void updateOnline(MinecraftPing.Result result) {
             ServerAvailabilityTracker.Change change = availability.success();

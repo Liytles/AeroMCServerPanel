@@ -2,15 +2,16 @@
 
 **Türkçe** · [English](README.en.md)
 
-> Güncel geliştirme sürümü: **3.1.0** · [Türkçe ve İngilizce sürüm notları](release-notes/v3.1.0.md)
+> Kararlı sürüm: **4.0.0** · [V4 yol haritası](V4-ROADMAP.md) · [4.0 sürüm notları](release-notes/v4.0.0.md)
 
-Minecraft sunucularını üç sağlayıcı modunda yöneten JavaFX masaüstü paneli:
+Minecraft sunucularını dört sağlayıcı modunda yöneten JavaFX masaüstü paneli:
 
 - **Yerel JAR:** Başlat/durdur, canlı konsol, online oyuncular ve ZIP yedekleme.
 - **Exaroton:** Resmî API ile sunucuları listeleme, başlatma/durdurma/yeniden başlatma, canlı konsol ve oyuncular.
 - **Aternos:** SRV yönlendirmeli Aternos adresleri ve özel portlarla canlı online durum, sürüm, oyuncu ve ping kontrolü; adres hatırlama, 15 saniyelik otomatik yenileme ve resmî panele geçiş.
+- **Pterodactyl:** Panelin `ptlc_...` Client API anahtarıyla erişilebilir sunucuları listeleme; CPU/RAM/disk/çalışma süresi, kısa ömürlü biletle canlı WebSocket konsolu, güç ve komut işlemleri. Seçili Pterodactyl sunucusu Yönetim, Canlı Harita ve Kontrol Merkezi'nde de kullanılabilir; güvenli dosya editörü `server.properties` ve izin verilen temel yapılandırmaları Client API üzerinden okur/yazar.
 
-Exaroton API anahtarı varsayılan olarak yalnızca uygulama belleğinde tutulur. Kullanıcı isterse en az 8 karakterlik bir ana parola belirleyebilir; anahtar PBKDF2-HMAC-SHA256 ile türetilen anahtar ve AES-256-GCM kullanılarak şifrelenir. Ana parola hiçbir yere kaydedilmez. **Ayarlar → Güvenli Kimlik Bilgileri** seçeneği ayrıca Exaroton anahtarını ve Discord webhook'unu cihaz/kullanıcı bağlı AES-256-GCM kasasında tutup sonraki açılışta alanlara geri yazmadan otomatik kullanabilir. Aternos web otomasyonu servis kurallarına aykırı olduğu için kullanılmaz.
+Exaroton ve Pterodactyl API anahtarları varsayılan olarak yalnızca uygulama belleğinde tutulur. Exaroton anahtarı ayrıca kullanıcı ana parolasıyla şifrelenebilir. **Ayarlar → Güvenli Kimlik Bilgileri** seçeneği Exaroton/Pterodactyl anahtarlarını ve Discord webhook'unu cihaz/kullanıcı bağlı AES-256-GCM kasasında tutup sonraki açılışta alanlara geri yazmadan otomatik kullanabilir. Pterodactyl uzak panel bağlantılarında HTTPS zorunludur; yönlendirmeler API anahtarını korumak için izlenmez. Aternos web otomasyonu servis kurallarına aykırı olduğu için kullanılmaz.
 
 ## Araçlar merkezi
 
@@ -32,7 +33,7 @@ Uygulama genelindeki Türkçe/İngilizce dil tercihi, güvenli otomatik kimlik k
 
 **Ayarlar → AeroMC Güncelleme Merkezi**, sabitlenmiş `Liytles/AeroMCServerPanel` GitHub Releases kaynağından kararlı veya beta sürümleri denetler. İşletim sistemine uygun `.exe`, `.deb` veya `.dmg` paketini seçer; indirme ilerlemesini ve sürüm notlarını gösterir. Paket yalnızca GitHub HTTPS adresinden indirilir ve aynı yayındaki `<kurucu-adı>.sha256` dosyasıyla SHA-256 doğrulaması geçerse açılabilir. İndirme sırasında kanal değiştirme kilitlenir, ilerleme JavaFX görevine birleştirilerek arayüz kuyruğu korunur ve kurucu açılmadan hemen önce dosya boyutu ile SHA-256 tekrar doğrulanır. Kurucu AWT yerine Windows `rundll32`, macOS `open`, Linux `xdg-open`/`gio` üzerinden ayrı bir arka plan görevinde açılır; AeroMC kendiliğinden kapanmaz. Kullanıcının `.aeromc-panel` ayarları, kimlik kasaları ve Minecraft sunucu klasörleri güncelleme sırasında değiştirilmez. Kurulum ve kullanıcı-verisi konumlarının tamamı [INSTALLATION-LAYOUT.md](INSTALLATION-LAYOUT.md) içinde açıklanır.
 
-Güncelleme yayınlamak için depo ve Releases alanı anonim kullanıcılar tarafından okunabilir olmalıdır. `pom.xml` sürümünü örneğin `3.1.0` yap, üç platform paketini üret ve `v3.1.0` GitHub Release'ine her kurucuyla birlikte paketleme betiklerinin oluşturduğu eş adlı `.sha256` dosyasını yükle. Private depodaki yayınlar kullanıcı tokenı olmadan okunamadığından masaüstü güncelleme merkezi private Release üzerinden çalışmaz.
+Güncelleme yayınlamak için depo ve Releases alanı anonim kullanıcılar tarafından okunabilir olmalıdır. `pom.xml` sürümünü örneğin `4.0.0` yap, üç platform paketini üret ve `v4.0.0` GitHub Release'ine her kurucuyla birlikte paketleme betiklerinin oluşturduğu eş adlı `.sha256` dosyasını yükle. Private depodaki yayınlar kullanıcı tokenı olmadan okunamadığından masaüstü güncelleme merkezi private Release üzerinden çalışmaz.
 
 Uzaktan erişim varsayılan olarak yalnızca `127.0.0.1` üzerinde açılır ve TLS 1.2/1.3 ile `https://` üzerinden şifrelenir. LAN seçeneğini sadece güvendiğin özel ağda kullan; internete port yönlendirmesi yapma. En az 10 karakterli güçlü bir parola kullan.
 
@@ -112,7 +113,7 @@ Kurulum tamamlandıktan sonra mod veya eklentinin etkinleşmesi için sunucuyu y
 
 ## Kontrol Merkezi ve sunucu sağlığı
 
-Eski yatay Pro Araçlar sekmeleri, daha rahat bulunabilmeleri için sol menülü **Kontrol Merkezi** altında toplandı. Yerel JAR, Exaroton ve Aternos ekranları da ana menüdeki **Sunucular** bölümüne alındı.
+Eski yatay Pro Araçlar sekmeleri, daha rahat bulunabilmeleri için sol menülü **Kontrol Merkezi** altında toplandı. Yerel JAR, Exaroton, Aternos ve Pterodactyl ekranları da ana menüdeki **Sunucular** bölümüne alındı.
 
 - TPS, RAM, CPU, gecikme, aşırı yük uyarıları ve oturumdaki çökmelerden hesaplanan canlı **0–100 Sunucu Sağlık Puanı**
 - Sadeleştirilmiş **Tek Tık Lag Analizi**: Hızlı/Normal/Detaylı süre seçimi, canlı geri sayım, yalnızca doğrulanmış `spark.lucko.me` rapor bağlantısını yakalama ve iki rapor arasında gerçek 5 saniyelik Spark TPS değişimini gösterme
@@ -183,13 +184,13 @@ mvn javafx:run
 
 Oyuncu ve sunucu seçenekleri için **Yönetim** sekmesini aç. Yerel işlemlerde sunucunun çalışıyor olması gerekir. Exaroton işlemlerinde önce **Sunucular → Exaroton** bölümünden hesabı bağlayıp yönetilecek sunucuyu seç. Sağlık, Kriz Modu, Çökme Doktoru ve Başarı Kartları **Kontrol Merkezi** içindedir.
 
-## AeroMC 3.0 kurulum paketleri
+## AeroMC 4.0 kararlı kurulum paketleri
 
 Yayın paketleri kendi Java çalışma ortamını içerir; uygulamayı kullanacak kişinin ayrıca Java veya Maven kurmasına gerek yoktur.
 
-- **Windows 10/11:** `AeroMC-3.1.0.exe` dosyasına çift tıkla ve kurulum sihirbazını tamamla.
-- **Ubuntu/Debian Linux:** `aeromc_3.1.0_amd64.deb` dosyasına çift tıkla veya paket yöneticisiyle kur.
-- **macOS:** `AeroMC-3.1.0.dmg` dosyasını aç ve AeroMC'yi Applications klasörüne taşı.
+- **Windows 10/11:** `AeroMC-4.0.0.exe` dosyasına çift tıkla ve kurulum sihirbazını tamamla.
+- **Ubuntu/Debian Linux:** `aeromc_4.0.0_amd64.deb` dosyasına çift tıkla veya paket yöneticisiyle kur.
+- **macOS:** `AeroMC-4.0.0.dmg` dosyasını aç ve AeroMC'yi Applications klasörüne taşı.
 
 İlk dağıtımlar imzasızdır. Bu nedenle Windows SmartScreen veya macOS Gatekeeper ilk açılışta yayıncı uyarısı gösterebilir. Kaynak kodu herkese açıktır ve isteyen kullanıcı paketi kaynakla karşılaştırabilir. Kod imzalama sertifikaları edinildiğinde Windows Authenticode ile imzalama ve Apple Developer ID ile imzalama/noter onayı yayın sürecine eklenecektir. Proje açık kaynak lisansıyla değil, tüm hakları saklı (all rights reserved) bir lisansla yayınlanmıştır; kaynağı kopyalamak, değiştirmek veya yeniden dağıtmak için ayrıca yazılı izin gerekir — bkz. [LICENSE.txt](LICENSE.txt).
 

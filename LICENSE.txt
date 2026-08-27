@@ -18,4 +18,3 @@ Minecraft is a trademark of Microsoft Corporation.
 
 Third-party components remain subject to their own licenses. See
 THIRD-PARTY-NOTICES.md included with the project.
-

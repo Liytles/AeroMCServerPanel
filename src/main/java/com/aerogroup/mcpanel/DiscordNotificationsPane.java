@@ -1,5 +1,8 @@
 package com.aerogroup.mcpanel;
 
+import com.aerogroup.mcpanel.aeroguard.DeviceCredentialStore;
+import com.aerogroup.mcpanel.aeroguard.SecretFieldGuard;
+
 import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.geometry.Pos;
@@ -17,7 +20,7 @@ import java.util.function.*;
 final class DiscordNotificationsPane {
     private static final Path FILE = Path.of(System.getProperty("user.home"), ".aeromc-panel", "discord-notifications.properties");
     private final PanelConfig config;
-    private final BooleanSupplier remote;
+    private final Supplier<String> provider;
     private final Supplier<String> serverName;
     private final PasswordField webhook = new PasswordField();
     private final CheckBox enabled = new CheckBox("Discord bildirimleri açık"), status = new CheckBox("Açılma / kapanma"), crash = new CheckBox("Çökme ve kritik hata"), players = new CheckBox("Oyuncu girişleri"), performance = new CheckBox("RAM ve Kriz Modu"), maintenance = new CheckBox("Bakım ve yedek"), automation = new CheckBox("Zamanlanmış görevler"), mentionCritical = new CheckBox("Kritik olayda rolü etiketle");
@@ -28,7 +31,7 @@ final class DiscordNotificationsPane {
     private volatile String automaticWebhook;
     private boolean viewBuilt, vaultLoading;
 
-    DiscordNotificationsPane(PanelConfig config, BooleanSupplier remote, Supplier<String> serverName) { this.config = config; this.remote = remote; this.serverName = serverName; loadPreferences(); }
+    DiscordNotificationsPane(PanelConfig config, Supplier<String> provider, Supplier<String> serverName) { this.config = config; this.provider = provider; this.serverName = serverName; loadPreferences(); }
 
     Node buildView() {
         webhook.setPromptText("https://discord.com/api/webhooks/..."); webhook.setPrefWidth(560); SecretFieldGuard.protect(webhook); displayName.setPromptText("Webhook görünen adı"); displayName.setPrefWidth(180); roleId.setPromptText("Discord rol kimliği"); roleId.setPrefWidth(210); state.getStyleClass().add("muted");
@@ -45,7 +48,7 @@ final class DiscordNotificationsPane {
 
     void send(DiscordNotificationEngine.Type type, String title, String message, boolean critical) { send(type, title, message, critical, false); }
     void send(DiscordNotificationEngine.Type type, String title, String message, boolean critical, boolean force) {
-        DiscordNotificationEngine.Settings settings = settings(); DiscordNotificationEngine.Event event = new DiscordNotificationEngine.Event(type, title, message, remote.getAsBoolean() ? "Exaroton" : "Yerel JAR", serverName.get(), critical); if (!force && !DiscordNotificationEngine.shouldSend(settings, event)) return;
+        DiscordNotificationEngine.Settings settings = settings(); DiscordNotificationEngine.Event event = new DiscordNotificationEngine.Event(type, title, message, Objects.toString(provider.get(), "Yerel JAR"), serverName.get(), critical); if (!force && !DiscordNotificationEngine.shouldSend(settings, event)) return;
         String entered = webhook.getText().trim(), selected = entered.isBlank() ? automaticWebhook : entered; URI uri;
         try { uri = DiscordNotificationEngine.validateWebhook(selected); } catch (IllegalArgumentException error) { state.setText(error.getMessage()); if (force) showError(error.getMessage()); return; }
         state.setText("Discord bildirimi gönderiliyor..."); client.send(uri, DiscordNotificationEngine.payload(settings, event)).thenAccept(result -> Platform.runLater(() -> { state.setText(result.message()); if (result.success() && config.isAutomaticCredentialVaultEnabled() && !entered.isBlank()) { automaticWebhook = entered; webhook.clear(); updateVaultPrompt(); storeAutomaticWebhook(entered); } if (force && result.success()) info("Discord bağlantısı başarılı", "Test embed mesajı gönderildi."); else if (force && !result.success()) showError(result.message()); }));

@@ -1,4 +1,4 @@
-package com.aerogroup.mcpanel;
+package com.aerogroup.mcpanel.aeroguard;
 
 import javax.crypto.*;
 import javax.crypto.spec.*;
@@ -9,7 +9,7 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.security.SecureRandom;
 import java.util.*;
 
-/** Exaroton API anahtarını kullanıcı parolasından türetilen AES-GCM anahtarıyla saklar. */
+/** AeroGuard Exaroton API anahtarını kullanıcı parolasından türetilen AES-GCM anahtarıyla saklar. */
 public final class SecureTokenStore {
     private static final Path FILE = Path.of(System.getProperty("user.home"), ".aeromc-panel", "exaroton.token");
     private static final SecureRandom RANDOM = new SecureRandom();

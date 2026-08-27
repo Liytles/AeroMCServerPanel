@@ -1,5 +1,7 @@
 package com.aerogroup.mcpanel;
 
+import com.aerogroup.mcpanel.aeroguard.CrashLoopGuard;
+
 import com.exaroton.api.server.config.ConfigOption;
 import javafx.animation.*;
 import javafx.application.HostServices;
@@ -31,6 +33,7 @@ public final class ProToolsPane {
 
     private final ServerManager manager;
     private final ExarotonPane exaroton;
+    private final PterodactylPane pterodactyl;
     private final PanelConfig config;
     private final HostServices hostServices;
     private final ModCenterPane modCenterPane;
@@ -41,7 +44,7 @@ public final class ProToolsPane {
     private final DiscordNotificationsPane discordPane;
     private final SparkProfilerPane sparkPane;
     private final ScheduledTasksPane scheduledTasksPane;
-    private final ComboBox<String> provider = new ComboBox<>(FXCollections.observableArrayList("Yerel JAR", "Exaroton"));
+    private final ComboBox<String> provider = new ComboBox<>(FXCollections.observableArrayList("Yerel JAR", "Exaroton", "Pterodactyl"));
     private final Label providerState = new Label();
     private final ObservableList<String> findings = FXCollections.observableArrayList();
     private final ObservableList<String> crashReports = FXCollections.observableArrayList();
@@ -58,7 +61,7 @@ public final class ProToolsPane {
     private final Label thresholdAdvice = new Label("Öneri için sunucuyu bir süre normal kullan");
     private final ProgressBar healthProgress = new ProgressBar(0);
     private final XYChart.Series<Number, Number> cpuSeries = new XYChart.Series<>(), memorySeries = new XYChart.Series<>();
-    private final Timeline metrics = new Timeline(new KeyFrame(Duration.seconds(2), event -> samplePerformance()));
+    private final Timeline metrics = new Timeline(new KeyFrame(Duration.seconds(3), event -> samplePerformance()));
     private final CheckBox restartOnCrash = new CheckBox("Çökünce otomatik yeniden başlat");
     private final CheckBox notifyHighMemory = new CheckBox("Yüksek RAM kullanımında bildir");
     private final Spinner<Integer> memoryLimit = new Spinner<>(256, 65536, 4096, 256);
@@ -81,6 +84,7 @@ public final class ProToolsPane {
     private final Map<String, Object> crisisOriginalRemote = new LinkedHashMap<>();
     private final Map<String, String> crisisOriginalLocal = new LinkedHashMap<>();
     private ExarotonPane.ProSnapshot remoteSnapshot;
+    private PterodactylPane.ProSnapshot pterodactylSnapshot;
     private String lastRemoteStatus;
     private Boolean lastRemoteOnline;
     private boolean remoteMetricsReceived;
@@ -88,13 +92,13 @@ public final class ProToolsPane {
     private VBox localAutomationCard;
     private final Runnable openExarotonAutomation;
 
-    public ProToolsPane(ServerManager manager, ExarotonPane exaroton, PanelConfig config, HostServices hostServices, Runnable openExarotonAutomation) {
-        this.manager = manager; this.exaroton = exaroton; this.config = config; this.hostServices = hostServices; this.openExarotonAutomation = openExarotonAutomation;
+    public ProToolsPane(ServerManager manager, ExarotonPane exaroton, PterodactylPane pterodactyl, PanelConfig config, HostServices hostServices, Runnable openExarotonAutomation) {
+        this.manager = manager; this.exaroton = exaroton; this.pterodactyl = pterodactyl; this.config = config; this.hostServices = hostServices; this.openExarotonAutomation = openExarotonAutomation;
         this.modCenterPane = new ModCenterPane(manager, exaroton, config, hostServices);
         this.weeklyReportPane = new WeeklyReportPane(this::weeklyReportSnapshot);
-        this.storagePane = new ServerStoragePane(manager, exaroton, hostServices, this::isRemote, this::worldBackupCompleted);
-        this.discordPane = new DiscordNotificationsPane(config, this::isRemote, this::discordServerName);
-        this.sparkPane = new SparkProfilerPane(manager, exaroton, hostServices, this::isRemote, () -> serverOnline,
+        this.storagePane = new ServerStoragePane(manager, exaroton, pterodactyl, hostServices, provider::getValue, this::worldBackupCompleted);
+        this.discordPane = new DiscordNotificationsPane(config, provider::getValue, this::discordServerName);
+        this.sparkPane = new SparkProfilerPane(manager, exaroton, pterodactyl, hostServices, provider::getValue, () -> serverOnline,
                 () -> currentTps, this::notificationSource, this::recordEvent,
                 message -> findings.add(0, now() + "  LAG AVCISI: " + message));
         this.scheduledTasksPane = new ScheduledTasksPane(this::isRemote, new ScheduledTasksPane.Actions() {
@@ -112,11 +116,19 @@ public final class ProToolsPane {
         crisisCooldownSeconds = new Spinner<>(0, 600, config.getCrisisCooldownSeconds(), 15);
         diagnosticHistory.importTimeline(EventTimelinePane.FILE); crisisHistory.closeInterrupted(Instant.now()); refreshCrisisHistory(); LanguageManager.englishProperty().addListener((obs, old, value) -> { refreshCrisisHistory(); sparkPane.languageChanged(); weeklyReportPane.refresh(); }); metrics.setCycleCount(Animation.INDEFINITE);
         exaroton.addProConsoleListener(this::onRemoteConsole);
-        exaroton.addProSnapshotListener(snapshot -> Platform.runLater(() -> acceptRemoteSnapshot(snapshot)));
-        exaroton.addProMetricsListener(metrics -> Platform.runLater(() -> acceptRemoteMetrics(metrics)));
+        exaroton.addProSnapshotListener(snapshot -> onFx(() -> acceptRemoteSnapshot(snapshot)));
+        exaroton.addProMetricsListener(metrics -> onFx(() -> acceptRemoteMetrics(metrics)));
         exaroton.activeServerNameProperty().addListener((observable, oldName, newName) -> {
             remoteMetricsReceived = false;
             if (!"Exaroton sunucusu seçilmedi".equals(newName)) provider.getSelectionModel().select("Exaroton");
+            updateProviderState();
+        });
+        pterodactyl.addConsoleListener(this::onPterodactylConsole);
+        pterodactyl.addSnapshotListener(snapshot -> onFx(() -> acceptPterodactylSnapshot(snapshot)));
+        pterodactyl.addMetricsListener(value -> onFx(() -> acceptPterodactylMetrics(value)));
+        pterodactyl.activeServerNameProperty().addListener((observable, oldName, newName) -> {
+            remoteMetricsReceived = false;
+            if (!"Pterodactyl sunucusu seçilmedi".equals(newName)) provider.getSelectionModel().select("Pterodactyl");
             updateProviderState();
         });
     }
@@ -196,9 +208,9 @@ public final class ProToolsPane {
 
     private void updateAutomationProviderUi() {
         if (localAutomationCard == null) return; boolean remote = isRemote();
-        automationScope.setText(remote ? "Exaroton seçili • Sürekli kurallar Sunucular → Exaroton → Otomasyon Merkezi'nde tek yerden yönetilir." : "Yerel JAR seçili • Yerel görevler ve korumalar bu sayfadan yönetilir.");
-        openExarotonAutomationButton.setManaged(remote); openExarotonAutomationButton.setVisible(remote); localAutomationCard.setManaged(!remote); localAutomationCard.setVisible(!remote);
-        maintenanceNote.setText(remote ? "Exaroton sunucusunda whitelist açılır, oyuncular bilgilendirilir ve sunucu kapatılır. Exaroton API yedek oluşturmayı desteklemez." : "Yerel sunucuda whitelist açılır, oyuncular bilgilendirilir, dünya kaydedilir, yedek alınır ve sunucu güvenli şekilde kapatılır.");
+        automationScope.setText(isExaroton() ? "Exaroton seçili • Sürekli kurallar Sunucular → Exaroton → Otomasyon Merkezi'nde tek yerden yönetilir." : isPterodactyl() ? "Pterodactyl seçili • Zamanlanmış görevler, güç işlemleri, komutlar ve bildirimler Client API üzerinden yürütülür." : "Yerel JAR seçili • Yerel görevler ve korumalar bu sayfadan yönetilir.");
+        openExarotonAutomationButton.setManaged(isExaroton()); openExarotonAutomationButton.setVisible(isExaroton()); localAutomationCard.setManaged(!remote); localAutomationCard.setVisible(!remote);
+        maintenanceNote.setText(remote ? provider.getValue() + " sunucusunda whitelist açılır, oyuncular bilgilendirilir ve sunucu API üzerinden güvenle kapatılır. Uzak ZIP yedeği bu işlemde oluşturulmaz." : "Yerel sunucuda whitelist açılır, oyuncular bilgilendirilir, dünya kaydedilir, yedek alınır ve sunucu güvenli şekilde kapatılır.");
     }
 
     public void onConsole(String line) {
@@ -206,9 +218,10 @@ public final class ProToolsPane {
         analyzeConsole(line);
     }
     private void onRemoteConsole(String line) {
-        if (!isRemote()) return;
+        if (!isExaroton()) return;
         analyzeConsole(line);
     }
+    private void onPterodactylConsole(String line) { if (isPterodactyl()) analyzeConsole(line); }
     private void analyzeConsole(String line) {
         synchronized (consoleHistory) { consoleHistory.addLast(line); while (consoleHistory.size() > 300) consoleHistory.removeFirst(); }
         incidentContext.recordConsole(line);
@@ -254,14 +267,16 @@ public final class ProToolsPane {
         playerValue.setText(Integer.toString(names.size()));
     }
 
-    private boolean isRemote() { return "Exaroton".equals(provider.getValue()); }
+    private boolean isRemote() { return !"Yerel JAR".equals(provider.getValue()); }
+    private boolean isExaroton() { return "Exaroton".equals(provider.getValue()); }
+    private boolean isPterodactyl() { return "Pterodactyl".equals(provider.getValue()); }
     private void updateProviderState() {
         if (provider.getValue() == null) return;
-        serverOnline = isRemote() ? remoteSnapshot != null && remoteSnapshot.online() : manager.isRunning();
-        providerState.setText(isRemote() ? exaroton.getActiveServerName() : (serverOnline ? "Yerel sunucu online" : "Yerel sunucu kapalı")); updateHealthAndCrisis();
+        serverOnline = isExaroton() ? remoteSnapshot != null && remoteSnapshot.online() : isPterodactyl() ? pterodactylSnapshot != null && pterodactylSnapshot.online() : manager.isRunning();
+        providerState.setText(isExaroton() ? exaroton.getActiveServerName() : isPterodactyl() ? pterodactyl.getActiveServerName() : (serverOnline ? "Yerel sunucu online" : "Yerel sunucu kapalı")); updateHealthAndCrisis();
     }
     private void acceptRemoteSnapshot(ExarotonPane.ProSnapshot snapshot) {
-        remoteSnapshot = snapshot; if (!isRemote()) return;
+        remoteSnapshot = snapshot; if (!isExaroton()) return;
         serverOnline = snapshot.online();
         if (!snapshot.online()) sparkPane.serverStopped("Exaroton sunucusu kapandı • Lag analizi beklemesi durduruldu");
         providerState.setText(snapshot.name() + " • " + snapshot.status()); playerValue.setText(snapshot.players() + " / " + snapshot.maxPlayers());
@@ -280,11 +295,25 @@ public final class ProToolsPane {
         if (snapshot.online()) { autoRestarting = false; if (sampleIndex % 5 == 0) probeLatency(snapshot.address()); } lastRemoteStatus = snapshot.status(); lastRemoteOnline = snapshot.online(); updateHealthAndCrisis();
     }
     private void acceptRemoteMetrics(ExarotonPane.ProMetrics metrics) {
-        if (!isRemote()) return;
+        if (!isExaroton()) return;
         boolean received = false;
         if (Double.isFinite(metrics.tps())) { currentTps = metrics.tps(); cpuValue.setText(String.format(Locale.US, "TPS %.1f • %.1f ms", metrics.tps(), metrics.averageTickTime())); addPoint(cpuSeries, sampleIndex, metrics.tps()); received = true; }
         if (Double.isFinite(metrics.memoryPercent())) { double percent = metrics.memoryPercent() <= 1.0 ? metrics.memoryPercent() * 100.0 : metrics.memoryPercent(); currentRamPercent = percent; memoryValue.setText(String.format(Locale.US, "%.1f%% kullanım", percent)); addPoint(memorySeries, sampleIndex, percent); received = true; }
         if (received) { remoteMetricsReceived = true; sampleIndex++; recordPerformanceSample(); updateHealthAndCrisis(); }
+    }
+
+    private void acceptPterodactylSnapshot(PterodactylPane.ProSnapshot snapshot) {
+        pterodactylSnapshot = snapshot; if (!isPterodactyl()) return; serverOnline = snapshot.online();
+        providerState.setText(snapshot.name() + " • " + snapshot.status()); playerValue.setText(snapshot.players() + " / " + snapshot.maxPlayers()); uptimeValue.setText(snapshot.status());
+        if (!snapshot.online()) { cpuValue.setText("-"); memoryValue.setText(snapshot.memoryLimitMb() > 0 ? snapshot.memoryLimitMb() + " MB ayrılmış" : "-"); sparkPane.serverStopped("Pterodactyl sunucusu kapandı • Lag analizi beklemesi durduruldu"); }
+        if (!snapshot.playerNames().isEmpty()) acceptPlayers(snapshot.playerNames());
+        if (snapshot.online() && sampleIndex % 5 == 0) probeLatency(snapshot.address()); updateHealthAndCrisis();
+    }
+
+    private void acceptPterodactylMetrics(PterodactylPane.ProMetrics value) {
+        if (!isPterodactyl()) return; currentCpuPercent = value.cpuPercent(); currentRamPercent = value.memoryPercent(); currentMemoryMb = (int) Math.min(Integer.MAX_VALUE, value.memoryMb());
+        cpuValue.setText(String.format(Locale.US, "%.1f%% CPU", value.cpuPercent())); memoryValue.setText(Double.isFinite(value.memoryPercent()) ? String.format(Locale.US, "%d MB • %.1f%%", value.memoryMb(), value.memoryPercent()) : value.memoryMb() + " MB"); uptimeValue.setText(durationText(value.uptimeSeconds()));
+        addPoint(cpuSeries, sampleIndex, value.cpuPercent()); if (Double.isFinite(value.memoryPercent())) addPoint(memorySeries, sampleIndex, value.memoryPercent()); sampleIndex++; remoteMetricsReceived = true; recordPerformanceSample(); updateHealthAndCrisis();
     }
 
     private void samplePerformance() {
@@ -307,6 +336,10 @@ public final class ProToolsPane {
     }
     private void sampleRemotePerformance() {
         sampleIndex++;
+        if (isPterodactyl()) {
+            if (!pterodactyl.hasActiveServer()) { providerState.setText("Pterodactyl sunucusu seçilmedi"); cpuValue.setText("-"); memoryValue.setText("-"); uptimeValue.setText("-"); playerValue.setText("0"); return; }
+            return; // PterodactylPane WebSocket metrikleri ve 10 sn'lik tek durum yenilemesi ortak dinleyicilerle buraya gelir.
+        }
         if (!exaroton.hasActiveServer()) { providerState.setText("Exaroton sunucusu seçilmedi"); cpuValue.setText("-"); memoryValue.setText("-"); uptimeValue.setText("-"); playerValue.setText("0"); return; }
         if (sampleIndex % 5 != 0 && remoteSnapshot != null) return;
         Task<ExarotonPane.ProSnapshot> task = new Task<>() { protected ExarotonPane.ProSnapshot call() throws Exception { return exaroton.fetchProSnapshot().join(); } };
@@ -367,7 +400,14 @@ public final class ProToolsPane {
     }
 
     private void applyCrisisSettings() throws Exception {
-        if (isCrisisRemote()) {
+        if (isCrisisPterodactyl()) {
+            Map<String, Object> options = pterodactyl.loadServerOptions().join(); crisisOriginalRemote.clear();
+            for (String key : List.of("view-distance", "simulation-distance")) if (options.containsKey(key)) crisisOriginalRemote.put(key, options.get(key));
+            pterodactyl.saveServerOptions(Map.of("view-distance", 6, "simulation-distance", 4)).join();
+            pterodactyl.executeAdminCommand("say [AeroMC] Kriz Modu etkin: ağır görevler geçici olarak azaltılıyor.").join();
+            pterodactyl.executeAdminCommand("gamerule randomTickSpeed 1").join(); return;
+        }
+        if (isCrisisExaroton()) {
             Map<String, ConfigOption<?>> options = exaroton.loadServerOptions().join(); crisisOriginalRemote.clear();
             for (String key : List.of("view-distance", "simulation-distance")) if (options.containsKey(key)) crisisOriginalRemote.put(key, options.get(key).getValue());
             exaroton.saveServerOptions(Map.of("view-distance", 6, "simulation-distance", 4)).join();
@@ -392,7 +432,11 @@ public final class ProToolsPane {
     }
 
     private void restoreCrisisSettings() throws Exception {
-        if (isCrisisRemote()) {
+        if (isCrisisPterodactyl()) {
+            if (!crisisOriginalRemote.isEmpty()) pterodactyl.saveServerOptions(new LinkedHashMap<>(crisisOriginalRemote)).join();
+            if (pterodactyl.hasActiveServer()) pterodactyl.executeAdminCommand("gamerule randomTickSpeed 3").join(); crisisOriginalRemote.clear(); crisisProvider = null; return;
+        }
+        if (isCrisisExaroton()) {
             if (!crisisOriginalRemote.isEmpty()) exaroton.saveServerOptions(new LinkedHashMap<>(crisisOriginalRemote)).join();
             if (exaroton.hasActiveServer()) exaroton.executeAdminCommand("gamerule randomTickSpeed 3").join(); crisisOriginalRemote.clear(); crisisProvider = null; return;
         }
@@ -400,7 +444,8 @@ public final class ProToolsPane {
         if (manager.isRunning()) manager.command("gamerule randomTickSpeed 3"); crisisOriginalLocal.clear(); crisisProvider = null;
     }
 
-    private boolean isCrisisRemote() { return "Exaroton".equals(crisisProvider); }
+    private boolean isCrisisExaroton() { return "Exaroton".equals(crisisProvider); }
+    private boolean isCrisisPterodactyl() { return "Pterodactyl".equals(crisisProvider); }
     private long elapsedSeconds(Instant start, Instant end) { return start == null ? 0 : Math.max(0, java.time.Duration.between(start, end).toSeconds()); }
 
     private void createIncident(String state, boolean crashed) {
@@ -431,6 +476,7 @@ public final class ProToolsPane {
     }
 
     private void addPoint(XYChart.Series<Number, Number> series, long x, double y) { series.getData().add(new XYChart.Data<>(x, y)); while (series.getData().size() > 60) series.getData().remove(0); }
+    private static void onFx(Runnable action) { if (Platform.isFxApplicationThread()) action.run(); else Platform.runLater(action); }
     private void probeLocalLatency() {
         Path folder = manager.getServerFolder(); if (folder == null) return; Properties values = loadProperties(folder.resolve("server.properties")); String port = values.getProperty("server-port", "25565"); probeLatency("127.0.0.1:" + port);
     }
@@ -446,15 +492,15 @@ public final class ProToolsPane {
         try { for (String line : Files.readAllLines(status)) if (line.startsWith("VmRSS:")) return Integer.parseInt(line.replaceAll("[^0-9]", "")) / 1024; } catch (Exception ignored) { } return -1;
     }
 
-    private void restartConfigured() { if (isRemote()) { runRemoteAction("Exaroton yeniden başlatma", exaroton::restartActiveServer); return; } Path jar = config.getServerJar(); if (jar == null || !Files.isRegularFile(jar)) { Platform.runLater(() -> showError("Yeniden başlatmak için Yerel JAR seçimi bulunamadı.")); return; } manager.restart(jar, config.getMemoryMb()); }
-    private void stopConfigured() { if (isRemote()) runRemoteAction("Exaroton durdurma", exaroton::stopActiveServer); else manager.stop(); }
-    private void announceConfigured(String message) { if (isRemote()) runRemoteAction("Exaroton duyuru", () -> exaroton.executeAdminCommand("say " + message)); else try { manager.command("say " + message); } catch (IOException error) { showError(error.getMessage()); } }
+    private void restartConfigured() { if (isPterodactyl()) { runRemoteAction("Pterodactyl yeniden başlatma", pterodactyl::restartActiveServer); return; } if (isExaroton()) { runRemoteAction("Exaroton yeniden başlatma", exaroton::restartActiveServer); return; } Path jar = config.getServerJar(); if (jar == null || !Files.isRegularFile(jar)) { Platform.runLater(() -> showError("Yeniden başlatmak için Yerel JAR seçimi bulunamadı.")); return; } manager.restart(jar, config.getMemoryMb()); }
+    private void stopConfigured() { if (isPterodactyl()) runRemoteAction("Pterodactyl durdurma", pterodactyl::stopActiveServer); else if (isExaroton()) runRemoteAction("Exaroton durdurma", exaroton::stopActiveServer); else manager.stop(); }
+    private void announceConfigured(String message) { if (isPterodactyl()) runRemoteAction("Pterodactyl duyuru", () -> pterodactyl.executeAdminCommand("say " + message)); else if (isExaroton()) runRemoteAction("Exaroton duyuru", () -> exaroton.executeAdminCommand("say " + message)); else try { manager.command("say " + message); } catch (IOException error) { showError(error.getMessage()); } }
     private void worldBackupCompleted(Path path) { recordEvent("Yedek", "Dünya yedeği hazırlandı: " + path.getFileName()); DesktopNotifier.show(notificationSource(), "AeroMC", "Dünya yedeği hazır."); sendDiscord(DiscordNotificationEngine.Type.BACKUP, "Yedek hazır", path.getFileName() + " başarıyla oluşturuldu.", false); info("Yedek hazır", path.toString()); }
     private void maintenanceMode() {
         if (isRemote()) {
-            if (!exaroton.hasActiveServer()) { showError("Önce Exaroton sekmesinden bir sunucu seç."); return; } if (!confirm("Exaroton sunucusunda whitelist açılıp duyuru gönderildikten sonra sunucu kapatılsın mı? Yedekleme API tarafından desteklenmiyor.")) return;
-            Task<Void> remote = new Task<>() { protected Void call() throws Exception { exaroton.executeAdminCommand("whitelist on").join(); exaroton.executeAdminCommand("say Sunucu bakım moduna giriyor. Lütfen güvenli şekilde çıkış yapın.").join(); exaroton.stopActiveServer().join(); return null; } };
-            remote.setOnSucceeded(event -> { findings.add(0, now() + "  BAKIM: Exaroton whitelist açıldı ve sunucu kapatıldı."); sendDiscord(DiscordNotificationEngine.Type.MAINTENANCE, "Exaroton bakım modu", "Whitelist açıldı, oyuncular bilgilendirildi ve sunucu kapatıldı.", false); }); remote.setOnFailed(event -> showError(rootMessage(remote.getException()))); run(remote, "exaroton-maintenance"); return;
+            boolean ptero = isPterodactyl(); String source = provider.getValue(); if (ptero ? !pterodactyl.hasActiveServer() : !exaroton.hasActiveServer()) { showError("Önce " + source + " sekmesinden bir sunucu seç."); return; } if (!confirm(source + " sunucusunda whitelist açılıp duyuru gönderildikten sonra sunucu kapatılsın mı? Uzak yedek bu işlemde oluşturulmaz.")) return;
+            Task<Void> remote = new Task<>() { protected Void call() throws Exception { if (ptero) { pterodactyl.executeAdminCommand("whitelist on").join(); pterodactyl.executeAdminCommand("say Sunucu bakım moduna giriyor. Lütfen güvenli şekilde çıkış yapın.").join(); pterodactyl.stopActiveServer().join(); } else { exaroton.executeAdminCommand("whitelist on").join(); exaroton.executeAdminCommand("say Sunucu bakım moduna giriyor. Lütfen güvenli şekilde çıkış yapın.").join(); exaroton.stopActiveServer().join(); } return null; } };
+            remote.setOnSucceeded(event -> { findings.add(0, now() + "  BAKIM: " + source + " whitelist açıldı ve sunucu kapatıldı."); sendDiscord(DiscordNotificationEngine.Type.MAINTENANCE, source + " bakım modu", "Whitelist açıldı, oyuncular bilgilendirildi ve sunucu kapatıldı.", false); }); remote.setOnFailed(event -> showError(rootMessage(remote.getException()))); run(remote, source.toLowerCase(Locale.ROOT) + "-maintenance"); return;
         }
         if (!manager.isRunning()) { showError("Bakım modu için yerel sunucu çalışıyor olmalı."); return; } if (!confirm("Bakım modu sunucuyu yedekleyip kapatacak. Devam edilsin mi?")) return;
         Task<Path> task = new Task<>() { protected Path call() throws Exception { manager.command("whitelist on"); manager.command("say Sunucu bakım moduna giriyor. Lütfen güvenli şekilde çıkış yapın."); manager.command("save-all flush"); Thread.sleep(1500); Path backup = manager.createBackup(); manager.stop(); return backup; } };
@@ -465,8 +511,8 @@ public final class ProToolsPane {
 
     public void setAutomaticCredentialVaultEnabled(boolean enabled) { discordPane.setAutomaticCredentialVaultEnabled(enabled); }
     private void sendDiscord(DiscordNotificationEngine.Type type, String title, String message, boolean critical) { discordPane.send(type, title, message, critical); }
-    private String discordServerName() { if (isRemote() && remoteSnapshot != null) return remoteSnapshot.name(); Path folder = manager.getServerFolder(); return folder == null || folder.getFileName() == null ? (isRemote() ? exaroton.getActiveServerName() : "Yerel sunucu") : folder.getFileName().toString(); }
-    private String notificationSource() { return isRemote() ? NotificationCenter.serverSource("Exaroton", exaroton.getActiveServerName()) : NotificationCenter.serverSource("Yerel JAR", ""); }
+    private String discordServerName() { if (isPterodactyl()) return pterodactylSnapshot != null ? pterodactylSnapshot.name() : pterodactyl.getActiveServerName(); if (isExaroton() && remoteSnapshot != null) return remoteSnapshot.name(); Path folder = manager.getServerFolder(); return folder == null || folder.getFileName() == null ? (isExaroton() ? exaroton.getActiveServerName() : "Yerel sunucu") : folder.getFileName().toString(); }
+    private String notificationSource() { return isPterodactyl() ? NotificationCenter.serverSource("Pterodactyl", pterodactyl.getActiveServerName()) : isExaroton() ? NotificationCenter.serverSource("Exaroton", exaroton.getActiveServerName()) : NotificationCenter.serverSource("Yerel JAR", ""); }
 
     private void runRemoteAction(String name, Callable<CompletableFuture<Void>> action) { Task<Void> task = new Task<>() { protected Void call() throws Exception { action.call().join(); return null; } }; task.setOnFailed(event -> showError(name + " başarısız: " + rootMessage(task.getException()))); run(task, name.toLowerCase(Locale.ROOT).replace(' ', '-')); }
 

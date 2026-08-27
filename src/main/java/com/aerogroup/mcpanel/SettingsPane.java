@@ -1,5 +1,8 @@
 package com.aerogroup.mcpanel;
 
+import com.aerogroup.mcpanel.aeroguard.DeviceCredentialStore;
+import com.aerogroup.mcpanel.aeroguard.SecurityAuditEngine;
+
 import javafx.geometry.Insets;
 import javafx.application.HostServices;
 import javafx.application.Platform;
@@ -48,10 +51,10 @@ public final class SettingsPane {
         Label mapNote = note("Kapatıldığında Canlı Harita sekmesiyle birlikte konum sorguları, çizim zamanlayıcısı ve Exaroton harita dinleyicileri tamamen durdurulur. Değişiklik anında uygulanır.");
         liveMap.setOnAction(event -> { boolean previous = !liveMap.isSelected(); config.setLiveMapEnabled(liveMap.isSelected()); try { config.save(); liveMapToggle.accept(liveMap.isSelected()); } catch (IOException error) { liveMap.setSelected(previous); config.setLiveMapEnabled(previous); showError(error.getMessage()); } });
 
-        CheckBox automaticVault = new CheckBox("Exaroton ve Discord kimlik bilgilerini bu cihazda otomatik aç");
+        CheckBox automaticVault = new CheckBox("Exaroton, Pterodactyl ve Discord kimlik bilgilerini bu cihazda otomatik aç");
         automaticVault.setSelected(config.isAutomaticCredentialVaultEnabled());
         Label vaultState = note(vaultStatus(automaticVault.isSelected()));
-        Label vaultNote = note("Etkin olduğunda geçerli API anahtarı ve webhook ilk başarılı kullanımdan sonra bu işletim sistemi kullanıcısına ve cihaza bağlı AES-256-GCM kasasında saklanır. Sonraki açılışta alanlara yazılmadan kullanılır. Gizli alanlarda kopyala, kes, sağ tık ve sürükleme kapalıdır. Bu koruma, aynı kullanıcı yetkisiyle çalışan kötü amaçlı yazılımlara karşı mutlak güvence vermez.");
+        Label vaultNote = note("Etkin olduğunda geçerli Exaroton/Pterodactyl API anahtarları ve Discord webhook'u ilk başarılı kullanımdan sonra bu işletim sistemi kullanıcısına ve cihaza bağlı AES-256-GCM kasasında saklanır. Sonraki açılışta alanlara yazılmadan kullanılır. Gizli alanlarda kopyala, kes, sağ tık ve sürükleme kapalıdır. Bu koruma, aynı kullanıcı yetkisiyle çalışan kötü amaçlı yazılımlara karşı mutlak güvence vermez.");
         automaticVault.setOnAction(event -> {
             boolean enabled = automaticVault.isSelected(), previous = !enabled;
             config.setAutomaticCredentialVaultEnabled(enabled);
@@ -148,11 +151,13 @@ public final class SettingsPane {
     private String javaDescription(JavaRuntimeResolver.RuntimeInfo info) { return "Java " + info.feature() + " hazır • " + info.source() + " • " + info.executable(); }
     private String vaultStatus(boolean enabled) {
         if (!enabled) return "Otomatik kasa kapalı; cihaz bağlı kopyalar silinir ve gizli bilgiler her oturumda yeniden istenir.";
-        boolean exaroton = DeviceCredentialStore.exists(DeviceCredentialStore.Kind.EXAROTON), discord = DeviceCredentialStore.exists(DeviceCredentialStore.Kind.DISCORD);
-        if (exaroton && discord) return "Exaroton ve Discord otomatik kasası hazır.";
-        if (exaroton) return "Exaroton kasası hazır; Discord webhook ilk başarılı kullanımda eklenecek.";
-        if (discord) return "Discord kasası hazır; Exaroton anahtarı ilk başarılı bağlantıda eklenecek.";
-        return "Otomatik kasa açık; anahtarlar ilk başarılı kullanımda güvenli kasaya eklenecek.";
+        boolean exaroton = DeviceCredentialStore.exists(DeviceCredentialStore.Kind.EXAROTON);
+        boolean pterodactyl = DeviceCredentialStore.exists(DeviceCredentialStore.Kind.PTERODACTYL);
+        boolean discord = DeviceCredentialStore.exists(DeviceCredentialStore.Kind.DISCORD);
+        int ready = (exaroton ? 1 : 0) + (pterodactyl ? 1 : 0) + (discord ? 1 : 0);
+        if (ready == 3) return "Exaroton, Pterodactyl ve Discord otomatik kasaları hazır.";
+        if (ready == 0) return "Otomatik kasa açık; kimlik bilgileri ilk başarılı kullanımda güvenli kasaya eklenecek.";
+        return ready + " / 3 otomatik kasa hazır • eksik bilgiler ilk başarılı kullanımda eklenecek.";
     }
     private void applySecurityReport(SecurityAuditEngine.Report report, Label score, Label state, ListView<SecurityAuditEngine.Finding> findings) { score.setText(report.score() + " / 100"); state.setText(report.state()); findings.getItems().setAll(report.findings()); }
     private void showError(String text) { Alert alert = new Alert(Alert.AlertType.ERROR, LanguageManager.text(text == null ? "Bilinmeyen hata" : text), ButtonType.OK); alert.setHeaderText(LanguageManager.text("İşlem tamamlanamadı")); alert.showAndWait(); }

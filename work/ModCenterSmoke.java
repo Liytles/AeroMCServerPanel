@@ -22,6 +22,7 @@ public final class ModCenterSmoke {
         verifyConflictDetector();
         verifySafeLocalInstall();
         verifyRollback();
+        verifySymlinkDefense();
         System.out.println("mod-center-ok");
     }
 
@@ -124,6 +125,19 @@ public final class ModCenterSmoke {
         require(failed, "failure propagated");
         require("original".equals(Files.readString(existing, StandardCharsets.UTF_8)), "original restored after commit failure");
         ModInstallManager.deleteTree(root);
+    }
+
+    private static void verifySymlinkDefense() throws Exception {
+        Path root = Files.createTempDirectory("aeromc-mod-symlink-"), outside = Files.createTempDirectory("aeromc-mod-outside-");
+        try {
+            Files.createSymbolicLink(root.resolve("mods"), outside);
+            ModInstallManager installer = new ModInstallManager((file, directory) -> Files.writeString(directory.resolve(file.filename()), "payload", StandardCharsets.UTF_8));
+            boolean rejected = false;
+            try { installer.installLocal(root, "mods", new ModrinthService.Resolution(List.of(file("escape", "escape.jar", "1")))); }
+            catch (SecurityException | java.io.IOException expected) { rejected = true; }
+            require(rejected && !Files.exists(outside.resolve("escape.jar")), "symlinked content directory rejected");
+        } catch (UnsupportedOperationException ignored) { }
+        finally { ModInstallManager.deleteTree(root); ModInstallManager.deleteTree(outside); }
     }
 
     private static ModrinthService.ResolvedFile file(String project, String filename, String version) {

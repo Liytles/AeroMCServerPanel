@@ -1,4 +1,6 @@
-package com.aerogroup.mcpanel;
+package com.aerogroup.mcpanel.aeroguard;
+
+import com.aerogroup.mcpanel.PanelConfig;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -6,17 +8,17 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.*;
 
-/** Yerel AeroMC yapılandırmasını salt okunur tarar ve izinleri isteğe bağlı sertleştirir. */
-final class SecurityAuditEngine {
-    enum Level { PASS, WARNING, CRITICAL }
-    record Finding(Level level, String title, String detail) { }
-    record Report(int score, List<Finding> findings) { String state() { return score >= 90 ? "Güçlü" : score >= 70 ? "İyi" : score >= 45 ? "Dikkat" : "Kritik"; } }
+/** AeroGuard yerel yapılandırmayı salt okunur tarar ve izinleri isteğe bağlı sertleştirir. */
+public final class SecurityAuditEngine {
+    public enum Level { PASS, WARNING, CRITICAL }
+    public record Finding(Level level, String title, String detail) { }
+    public record Report(int score, List<Finding> findings) { public String state() { return score >= 90 ? "Güçlü" : score >= 70 ? "İyi" : score >= 45 ? "Dikkat" : "Kritik"; } }
 
     private static final Path DATA = Path.of(System.getProperty("user.home"), ".aeromc-panel");
-    private static final List<String> SENSITIVE = List.of("auto-exaroton.secret", "auto-discord.secret", "exaroton.token", "discord-webhook.secret", "remote-users.properties", "remote-tls.p12", "remote-tls.secret", "security.log", "config.properties");
+    private static final List<String> SENSITIVE = List.of("auto-exaroton.secret", "auto-discord.secret", "auto-pterodactyl.secret", "exaroton.token", "discord-webhook.secret", "remote-users.properties", "remote-tls.p12", "remote-tls.secret", "security.log", "config.properties");
     private SecurityAuditEngine() { }
 
-    static Report scan(PanelConfig config) {
+    public static Report scan(PanelConfig config) {
         List<Finding> findings = new ArrayList<>(); int score = 100;
         if (Files.exists(DATA) && !privatePermissions(DATA, true)) { score -= 25; findings.add(new Finding(Level.CRITICAL, "AeroMC veri klasörü fazla izinli", "Diğer yerel kullanıcılar ayar ve güvenlik dosyalarına erişebilir.")); }
         else findings.add(new Finding(Level.PASS, "Yerel veri klasörü", "Klasör izinleri kullanıcıyla sınırlandırılmış veya platform POSIX izinlerini kullanmıyor."));
@@ -37,7 +39,7 @@ final class SecurityAuditEngine {
         return new Report(Math.max(0, score), List.copyOf(findings));
     }
 
-    static int hardenPermissions() throws IOException {
+    public static int hardenPermissions() throws IOException {
         Files.createDirectories(DATA); int changed = 0;
         changed += restrict(DATA, true) ? 1 : 0;
         for (String name : SENSITIVE) { Path file = DATA.resolve(name); if (Files.exists(file, LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(file)) changed += restrict(file, false) ? 1 : 0; }

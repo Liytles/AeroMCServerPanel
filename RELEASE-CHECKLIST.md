@@ -1,11 +1,11 @@
-# AeroMC 3.1 release checklist
+# AeroMC 4.0 release checklist
 
 ## Build
 
 - [ ] `mvn clean package` succeeds with no compilation errors.
 - [ ] Linux `.deb`, Windows `.exe`, and macOS `.dmg` workflow jobs succeed.
 - [ ] Set a real public `AEROMC_MAINTAINER_EMAIL` for the Debian package.
-- [ ] Package filename and application title show version 3.1.0.
+- [ ] Package filename and application title show version 4.0.0.
 - [ ] Installer shows the current bilingual `INSTALLER-EULA.txt`, including the official Minecraft EULA and Usage Guidelines links.
 - [ ] Installed runtime contains `bin/java` (`java.exe` on Windows) and a local test server starts from the installed application.
 - [ ] The packaged app starts without a separately installed Java runtime.

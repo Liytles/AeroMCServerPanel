@@ -1,5 +1,9 @@
 package com.aerogroup.mcpanel;
 
+import com.aerogroup.mcpanel.aeroguard.DeviceCredentialStore;
+import com.aerogroup.mcpanel.aeroguard.SecretFieldGuard;
+import com.aerogroup.mcpanel.aeroguard.SecureTokenStore;
+
 import com.exaroton.api.ExarotonClient;
 import com.exaroton.api.server.Server;
 import com.exaroton.api.server.ServerStatus;
@@ -239,7 +243,7 @@ public final class ExarotonPane {
         latestMemoryPercent = Double.NaN; latestTps = Double.NaN; latestMspt = Double.NaN; activeRamGiB = -1; activeServerOnline = false; updateCreditUi();
         status.setText("Durum alınıyor..."); address.setText(active.getAddress()); playerCount.setText("-"); ram.setText("-");
         start.setDisable(true); stop.setDisable(true); restart.setDisable(true);
-        active.addConsoleSubscriber(line -> { Platform.runLater(() -> console.append(line)); proConsoleListeners.forEach(listener -> listener.accept(line)); });
+        active.addConsoleSubscriber(line -> { console.append(line); proConsoleListeners.forEach(listener -> listener.accept(line)); });
         active.addStatusSubscriber((oldServer, newServer) -> Platform.runLater(() -> update(newServer)));
         active.addStatsSubscriber(data -> { if (data != null && data.getMemory() != null) latestMemoryPercent = data.getMemory().getPercent(); publishProMetrics(); });
         active.addTickSubscriber(data -> { if (data != null) { latestTps = data.calculateTPS(); latestMspt = data.getAverageTickTime(); publishProMetrics(); } });

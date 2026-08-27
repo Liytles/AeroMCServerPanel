@@ -30,6 +30,7 @@ AeroMC özellikler kullanıldıkça `~/.aeromc-panel/` altında şu dosyaları o
 | `aternos-address.txt` | Son kullanılan Aternos adresi. |
 | `exaroton.token` | Ana parolayla şifrelenen isteğe bağlı Exaroton anahtar kasası. |
 | `auto-exaroton.secret` | Cihaz/kullanıcı bağlı otomatik Exaroton kasası. |
+| `auto-pterodactyl.secret` | Cihaz/kullanıcı bağlı otomatik Pterodactyl Client API anahtarı kasası. |
 | `discord-webhook.secret` | Ana parolayla şifrelenen isteğe bağlı Discord webhook kasası. |
 | `auto-discord.secret` | Cihaz/kullanıcı bağlı otomatik Discord kasası. |
 | `discord-notifications.properties` | Discord olay filtreleri ve gizli olmayan bildirim ayarları. |

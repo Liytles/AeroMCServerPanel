@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
 import java.util.regex.*;
 
@@ -27,12 +28,14 @@ public final class PlayerMapPane {
     private static final Pattern DIMENSION = Pattern.compile("([A-Za-z0-9_]{1,16}) has the following entity data:\\s*[\"']?(minecraft:[a-z0-9_./-]+)[\"']?");
     private final ServerManager local;
     private final ExarotonPane exaroton;
-    private final ComboBox<String> provider = new ComboBox<>(FXCollections.observableArrayList("Yerel JAR", "Exaroton"));
+    private final PterodactylPane pterodactyl;
+    private final ComboBox<String> provider = new ComboBox<>(FXCollections.observableArrayList("Yerel JAR", "Exaroton", "Pterodactyl"));
     private final ComboBox<String> dimension = new ComboBox<>(FXCollections.observableArrayList("minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"));
     private final Label connection = new Label("Hazır"), scaleLabel = new Label();
     private final Canvas canvas = new Canvas(760, 560);
     private final ObservableList<PlayerPoint> rows = FXCollections.observableArrayList();
     private final Map<String, PlayerPoint> points = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+    private final Queue<ParsedLocation> pendingLocations = new ConcurrentLinkedQueue<>();
     private final Timeline poll = new Timeline(new KeyFrame(Duration.seconds(5), event -> requestPositions()), new KeyFrame(Duration.seconds(1), event -> expireAndDraw()));
     private final CheckBox autoCenter = new CheckBox("Oyuncuları otomatik ortala"), trails = new CheckBox("Hareket izlerini göster");
     private TableView<PlayerPoint> table;
@@ -40,13 +43,19 @@ public final class PlayerMapPane {
     private String selectedPlayer;
     private final Consumer<String> remoteConsoleListener = this::onRemoteConsole;
     private final Consumer<ExarotonPane.ProSnapshot> remoteSnapshotListener = this::onRemoteSnapshot;
+    private final Consumer<String> pterodactylConsoleListener = this::onPterodactylConsole;
+    private final Consumer<PterodactylPane.ProSnapshot> pterodactylSnapshotListener = this::onPterodactylSnapshot;
     private final ChangeListener<String> remoteSelectionListener = (observable, oldName, newName) -> Platform.runLater(() -> { if (!"Exaroton sunucusu seçilmedi".equals(newName)) provider.getSelectionModel().select("Exaroton"); updateConnection(); });
+    private final ChangeListener<String> pterodactylSelectionListener = (observable, oldName, newName) -> Platform.runLater(() -> { if (!"Pterodactyl sunucusu seçilmedi".equals(newName)) provider.getSelectionModel().select("Pterodactyl"); updateConnection(); });
 
-    public PlayerMapPane(ServerManager local, ExarotonPane exaroton) {
-        this.local = local; this.exaroton = exaroton; poll.setCycleCount(Animation.INDEFINITE);
+    public PlayerMapPane(ServerManager local, ExarotonPane exaroton, PterodactylPane pterodactyl) {
+        this.local = local; this.exaroton = exaroton; this.pterodactyl = pterodactyl; poll.setCycleCount(Animation.INDEFINITE);
         exaroton.addProConsoleListener(remoteConsoleListener);
         exaroton.addProSnapshotListener(remoteSnapshotListener);
         exaroton.activeServerNameProperty().addListener(remoteSelectionListener);
+        pterodactyl.addConsoleListener(pterodactylConsoleListener);
+        pterodactyl.addSnapshotListener(pterodactylSnapshotListener);
+        pterodactyl.activeServerNameProperty().addListener(pterodactylSelectionListener);
     }
 
     public Node buildView() {
@@ -68,14 +77,15 @@ public final class PlayerMapPane {
         updateConnection(); poll.play(); draw(); return page;
     }
 
-    public void onLocalConsole(String line) { if (!isRemote()) parseLine(line); }
-    private void onRemoteConsole(String line) { if (isRemote()) parseLine(line); }
-    private void onRemoteSnapshot(ExarotonPane.ProSnapshot snapshot) { Platform.runLater(() -> { if (isRemote()) { connection.setText(snapshot.name() + " • " + snapshot.status()); retainPlayers(snapshot.playerNames()); } }); }
-    public void onLocalPlayers(List<String> names) { if (!isRemote()) Platform.runLater(() -> retainPlayers(names)); }
+    public void onLocalConsole(String line) { if (isLocal()) parseLine(line); }
+    private void onRemoteConsole(String line) { if (isExaroton()) parseLine(line); }
+    private void onPterodactylConsole(String line) { if (isPterodactyl()) parseLine(line); }
+    private void onRemoteSnapshot(ExarotonPane.ProSnapshot snapshot) { Platform.runLater(() -> { if (isExaroton()) { connection.setText(snapshot.name() + " • " + snapshot.status()); retainPlayers(snapshot.playerNames()); } }); }
+    private void onPterodactylSnapshot(PterodactylPane.ProSnapshot snapshot) { Platform.runLater(() -> { if (isPterodactyl()) { connection.setText(snapshot.name() + " • " + snapshot.status()); if (!snapshot.playerNames().isEmpty()) retainPlayers(snapshot.playerNames()); } }); }
+    public void onLocalPlayers(List<String> names) { if (isLocal()) Platform.runLater(() -> retainPlayers(names)); }
     private void parseLine(String line) {
         ParsedLocation parsed = parseConsoleLine(line); if (parsed == null) return;
-        if (parsed.dimension != null) Platform.runLater(() -> updateDimension(parsed.name, parsed.dimension));
-        else Platform.runLater(() -> updatePosition(parsed.name, parsed.x, parsed.y, parsed.z));
+        while (pendingLocations.size() >= 1_000) pendingLocations.poll(); pendingLocations.offer(parsed);
     }
     static ParsedLocation parseConsoleLine(String line) { Matcher position = POSITION.matcher(line); if (position.find()) return new ParsedLocation(position.group(1), Double.parseDouble(position.group(2)), Double.parseDouble(position.group(3)), Double.parseDouble(position.group(4)), null); Matcher world = DIMENSION.matcher(line); return world.find() ? new ParsedLocation(world.group(1), 0, 0, 0, world.group(2)) : null; }
     private void updatePosition(String name, double x, double y, double z) {
@@ -87,18 +97,27 @@ public final class PlayerMapPane {
 
     private void requestPositions() {
         updateConnection(); String pos = "execute as @a run data get entity @s Pos", dim = "execute as @a run data get entity @s Dimension";
-        if (isRemote()) {
+        if (isExaroton()) {
             if (!exaroton.hasActiveServer()) { connection.setText("Exaroton sunucusu seçilmedi"); return; }
             try { exaroton.executeAdminCommand(pos).exceptionally(error -> { Platform.runLater(() -> connection.setText("Konum sorgusu reddedildi")); return null; }); exaroton.executeAdminCommand(dim).exceptionally(error -> null); }
             catch (Exception error) { connection.setText("Sorgu gönderilemedi"); }
+        } else if (isPterodactyl()) {
+            if (!pterodactyl.hasActiveServer()) { connection.setText("Pterodactyl sunucusu seçilmedi"); return; }
+            pterodactyl.executeAdminCommand(pos).exceptionally(error -> { Platform.runLater(() -> connection.setText("Konum sorgusu reddedildi")); return null; });
+            pterodactyl.executeAdminCommand(dim).exceptionally(error -> null);
         } else {
             if (!local.isRunning()) { connection.setText("Yerel sunucu kapalı"); return; }
             try { local.command(pos); local.command(dim); connection.setText("Yerel sunucu • canlı"); } catch (IOException error) { connection.setText("Konum sorgusu gönderilemedi"); }
         }
     }
-    private void updateConnection() { connection.setText(isRemote() ? exaroton.getActiveServerName() : (local.isRunning() ? "Yerel sunucu • canlı" : "Yerel sunucu kapalı")); }
-    private boolean isRemote() { return "Exaroton".equals(provider.getValue()); }
-    private void expireAndDraw() { Instant cutoff = Instant.now().minusSeconds(30); points.entrySet().removeIf(entry -> entry.getValue().lastSeen.isBefore(cutoff)); refreshRows(); draw(); }
+    private void updateConnection() { connection.setText(isExaroton() ? exaroton.getActiveServerName() : isPterodactyl() ? pterodactyl.getActiveServerName() : (local.isRunning() ? "Yerel sunucu • canlı" : "Yerel sunucu kapalı")); }
+    private boolean isLocal() { return "Yerel JAR".equals(provider.getValue()); }
+    private boolean isExaroton() { return "Exaroton".equals(provider.getValue()); }
+    private boolean isPterodactyl() { return "Pterodactyl".equals(provider.getValue()); }
+    private void expireAndDraw() {
+        ParsedLocation parsed; boolean changed = false; while ((parsed = pendingLocations.poll()) != null) { PlayerPoint point = points.computeIfAbsent(parsed.name, PlayerPoint::new); point.lastSeen = Instant.now(); if (parsed.dimension != null) point.dimension = parsed.dimension; else { point.x = parsed.x; point.y = parsed.y; point.z = parsed.z; point.history.addLast(new MapPosition(parsed.x, parsed.z)); while (point.history.size() > 40) point.history.removeFirst(); } changed = true; }
+        Instant cutoff = Instant.now().minusSeconds(30); changed |= points.entrySet().removeIf(entry -> entry.getValue().lastSeen.isBefore(cutoff)); if (changed) { refreshRows(); if (autoCenter.isSelected()) fitPlayers(); } draw();
+    }
 
     private void fitPlayers() {
         List<PlayerPoint> visible = visiblePoints(); if (visible.isEmpty()) { centerX = centerZ = 0; return; }
@@ -143,7 +162,7 @@ public final class PlayerMapPane {
     private TableColumn<PlayerPoint, String> column(String title, java.util.function.Function<PlayerPoint, String> value) { TableColumn<PlayerPoint, String> column = new TableColumn<>(title); column.setCellValueFactory(row -> new ReadOnlyStringWrapper(value.apply(row.getValue()))); return column; }
     private Button button(String text, String style) { Button button = new Button(text); button.getStyleClass().add(style); return button; }
     private VBox card(String title, Node... nodes) { Label heading = new Label(title); heading.getStyleClass().add("section-title"); VBox card = new VBox(10, heading); card.getChildren().addAll(nodes); card.getStyleClass().add("card"); return card; }
-    public void shutdown() { poll.stop(); exaroton.removeProConsoleListener(remoteConsoleListener); exaroton.removeProSnapshotListener(remoteSnapshotListener); exaroton.activeServerNameProperty().removeListener(remoteSelectionListener); points.clear(); rows.clear(); }
+    public void shutdown() { poll.stop(); exaroton.removeProConsoleListener(remoteConsoleListener); exaroton.removeProSnapshotListener(remoteSnapshotListener); exaroton.activeServerNameProperty().removeListener(remoteSelectionListener); pterodactyl.removeConsoleListener(pterodactylConsoleListener); pterodactyl.removeSnapshotListener(pterodactylSnapshotListener); pterodactyl.activeServerNameProperty().removeListener(pterodactylSelectionListener); pendingLocations.clear(); points.clear(); rows.clear(); }
     private static final class PlayerPoint { final String name; double x, y, z; String dimension = "minecraft:overworld"; Instant lastSeen = Instant.now(); final Deque<MapPosition> history = new ArrayDeque<>(); PlayerPoint(String name) { this.name = name; } }
     private record MapPosition(double x, double z) { }
     record ParsedLocation(String name, double x, double y, double z, String dimension) { }

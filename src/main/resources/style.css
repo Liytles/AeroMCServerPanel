@@ -3,6 +3,11 @@
 .header { -fx-padding: 17 22; -fx-background-color: #111d27; -fx-border-color: transparent transparent #24323e transparent; }
 .logo { -fx-font-size: 19px; -fx-font-weight: 900; -fx-text-fill: #55b9ea; }
 .header-title { -fx-font-size: 17px; -fx-text-fill: #e7f0f5; }
+.aeroguard-badge { -fx-padding: 5 10 5 7; -fx-background-color: #102a24; -fx-border-color: #2d8d70; -fx-border-radius: 16; -fx-background-radius: 16; }
+.aeroguard-badge:hover, .aeroguard-badge:focused { -fx-background-color: #17372f; -fx-border-color: #49b88f; }
+.aeroguard-icon { -fx-opacity: .98; }
+.aeroguard-status { -fx-text-fill: #79e0b9; -fx-font-size: 11px; -fx-font-weight: 900; }
+.aeroguard-dialog-state { -fx-text-fill: #55d7a1; -fx-font-weight: bold; }
 .status-dot { -fx-font-size: 16px; }.status-text { -fx-text-fill: #a9bbc7; -fx-font-weight: bold; }
 .split-pane, .split-pane > .split-pane-divider { -fx-background-color: #0d141b; -fx-padding: 0; }
 .provider-tabs { -fx-background-color: #0d141b; -fx-tab-min-width: 108; }

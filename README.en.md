@@ -2,21 +2,22 @@
 
 [Türkçe](README.md) · **English**
 
-> Current development release: **3.1.0** · [Release notes in English and Turkish](release-notes/v3.1.0.md)
+> Stable release: **4.0.0** · [V4 roadmap](V4-ROADMAP.md) · [4.0 release notes](release-notes/v4.0.0.md)
 
-AeroMC is a JavaFX desktop application for managing Minecraft servers through three provider modes:
+AeroMC is a JavaFX desktop application for managing Minecraft servers through four provider modes:
 
 - **Local JAR:** start/stop, live console, online players, scheduled tasks, and ZIP backups.
 - **Exaroton:** list and control servers through the official API, follow the live console and players, protect credits, and automate server operation.
 - **Aternos:** read public online state, version, player count, and latency with SRV and custom-port support; remember addresses and open the official panel for management.
+- **Pterodactyl:** connect with a `ptlc_...` Client API key; list accessible servers, monitor CPU/RAM/disk/uptime, stream the live console with a short-lived WebSocket ticket, and perform protected power/command actions. The selected server also works across Management, Live Map, and Control Center; the safe file editor reads/writes `server.properties` and approved core configuration files through the Client API.
 
-Aternos browser automation is deliberately not used because it would violate the service rules. Exaroton API keys and Discord webhooks stay in memory by default. Optional vault modes encrypt them with AES-256-GCM either from a user-supplied master password or a device/user-bound secret. Master passwords are never saved.
+Aternos browser automation is deliberately not used because it would violate the service rules. Exaroton and Pterodactyl API keys plus Discord webhooks stay in memory by default. Optional vault modes encrypt them with AES-256-GCM using either a user-supplied master password where supported or a device/user-bound secret. Pterodactyl requires HTTPS for remote panels and redirects are never followed with the API key attached. Master passwords are never saved.
 
 ## Highlights
 
 - Turkish and English interface with a persistent language preference
 - First-launch feature tour and a persistent Notification Center
-- Local, Exaroton, and Aternos server views organized under one Servers area
+- Local, Exaroton, Aternos, and Pterodactyl server views organized under one Servers area
 - Health score, Crisis Mode, Crash Doctor, incident chains, and smart threshold suggestions
 - One-click Spark lag analysis with persistent TPS comparisons and optional verified Spark setup for pre-1.21 Paper/Fabric servers
 - Exaroton readiness checks, fleet view, credit protection, schedules, budgets, and crash recovery
@@ -127,9 +128,9 @@ On first launch, choose a local `server.jar`, Paper server JAR, or Fabric server
 
 Release packages include their own Java runtime; end users do not need to install Java or Maven.
 
-- **Windows 10/11:** run `AeroMC-3.1.0.exe`.
-- **Ubuntu/Debian:** open `aeromc_3.1.0_amd64.deb` or install it with a package manager.
-- **macOS:** open `AeroMC-3.1.0.dmg` and move AeroMC to Applications.
+- **Windows 10/11:** run `AeroMC-4.0.0.exe`.
+- **Ubuntu/Debian:** open `aeromc_4.0.0_amd64.deb` or install it with a package manager.
+- **macOS:** open `AeroMC-4.0.0.dmg` and move AeroMC to Applications.
 
 Early packages are unsigned and may trigger Windows SmartScreen or macOS Gatekeeper publisher warnings. Source code is publicly readable for inspection, but the project is distributed under an all-rights-reserved license. Copying, modifying, or redistributing it requires separate written permission; see [LICENSE.txt](LICENSE.txt).
 

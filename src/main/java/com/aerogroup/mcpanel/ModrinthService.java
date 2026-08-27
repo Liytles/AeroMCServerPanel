@@ -17,6 +17,8 @@ import java.util.*;
 public final class ModrinthService {
     private static final String API = "https://api.modrinth.com/v2";
     private static final String USER_AGENT = "AeroMCServerPanel/2.1 (desktop Minecraft server manager)";
+    private static final int MAX_API_BYTES = 4 * 1024 * 1024;
+    private static final long MAX_DOWNLOAD_BYTES = 512L * 1024 * 1024;
     private final HttpClient http = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).connectTimeout(Duration.ofSeconds(15)).build();
 
     public List<Project> search(String query, String gameVersion, String loader, String projectType) throws Exception {
@@ -68,16 +70,19 @@ public final class ModrinthService {
 
     public Path downloadVerified(ResolvedFile file, Path directory) throws Exception {
         if (!trustedDownload(file.url())) throw new SecurityException("Modrinth dışındaki bir indirme adresi reddedildi.");
-        Files.createDirectories(directory); Path output = directory.resolve(safeFilename(file.filename())); HttpRequest request = HttpRequest.newBuilder(file.url()).header("User-Agent", USER_AGENT).timeout(Duration.ofMinutes(3)).GET().build(); HttpResponse<Path> response = http.send(request, HttpResponse.BodyHandlers.ofFile(output));
-        if (response.statusCode() / 100 != 2) { Files.deleteIfExists(output); throw new IOException("Dosya indirilemedi: HTTP " + response.statusCode()); }
-        if (!trustedDownload(response.uri()) || file.size() >= 0 && Files.size(output) != file.size()) { Files.deleteIfExists(output); throw new SecurityException("Dosya boyutu veya indirme adresi doğrulanamadı: " + file.filename()); }
+        if (file.size() > MAX_DOWNLOAD_BYTES) throw new SecurityException("Mod dosyası güvenli indirme sınırını aştı: " + file.filename());
+        Files.createDirectories(directory); Path output = directory.resolve(safeFilename(file.filename())); HttpRequest request = HttpRequest.newBuilder(file.url()).header("User-Agent", USER_AGENT).timeout(Duration.ofMinutes(3)).GET().build(); HttpResponse<InputStream> response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        if (response.statusCode() / 100 != 2) { response.body().close(); Files.deleteIfExists(output); throw new IOException("Dosya indirilemedi: HTTP " + response.statusCode()); }
+        if (!trustedDownload(response.uri())) { response.body().close(); Files.deleteIfExists(output); throw new SecurityException("İndirme adresi doğrulanamadı: " + file.filename()); }
+        long downloaded = BoundedStreams.copyToFile(response.body(), output, MAX_DOWNLOAD_BYTES);
+        if (file.size() >= 0 && downloaded != file.size()) { Files.deleteIfExists(output); throw new SecurityException("Dosya boyutu doğrulanamadı: " + file.filename()); }
         String actual = digest(output); if (!actual.equalsIgnoreCase(file.sha512())) { Files.deleteIfExists(output); throw new SecurityException("SHA-512 doğrulaması başarısız: " + file.filename()); }
         return output;
     }
 
     private JsonElement getJson(String url) throws Exception { HttpRequest request = HttpRequest.newBuilder(URI.create(url)).header("User-Agent", USER_AGENT).header("Accept", "application/json").timeout(Duration.ofSeconds(30)).GET().build(); return sendJson(request); }
     private JsonElement postJson(String url, JsonObject body) throws Exception { HttpRequest request = HttpRequest.newBuilder(URI.create(url)).header("User-Agent", USER_AGENT).header("Accept", "application/json").header("Content-Type", "application/json").timeout(Duration.ofSeconds(45)).POST(HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8)).build(); return sendJson(request); }
-    private JsonElement sendJson(HttpRequest request) throws Exception { HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString()); if (response.statusCode() / 100 != 2) throw new IOException("Modrinth API HTTP " + response.statusCode() + " döndürdü."); return JsonParser.parseString(response.body()); }
+    private JsonElement sendJson(HttpRequest request) throws Exception { HttpResponse<InputStream> response = http.send(request, HttpResponse.BodyHandlers.ofInputStream()); String body = BoundedStreams.readString(response.body(), MAX_API_BYTES, StandardCharsets.UTF_8); if (response.statusCode() / 100 != 2) throw new IOException("Modrinth API HTTP " + response.statusCode() + " döndürdü."); return JsonParser.parseString(body); }
     static List<Project> parseSearch(JsonObject response) { List<Project> result = new ArrayList<>(); if (response == null || !response.has("hits")) return result; for (JsonElement element : response.getAsJsonArray("hits")) { JsonObject hit = element.getAsJsonObject(); String serverSide = string(hit, "server_side", "unknown"); if ("unsupported".equals(serverSide)) continue; String type = string(hit, "project_type", "mod"); if (hit.has("all_project_types") && hit.get("all_project_types").isJsonArray()) for (JsonElement item : hit.getAsJsonArray("all_project_types")) if ("plugin".equals(item.getAsString())) type = "plugin"; result.add(new Project(string(hit, "project_id", ""), string(hit, "slug", ""), string(hit, "title", "İsimsiz"), string(hit, "description", ""), string(hit, "author", "?"), hit.has("downloads") ? hit.get("downloads").getAsLong() : 0, nullableString(hit, "icon_url"), serverSide, type)); } return result; }
     static JsonObject selectVersion(JsonArray versions) { if (versions == null || versions.isEmpty()) return null; for (JsonElement element : versions) if ("release".equals(string(element.getAsJsonObject(), "version_type", ""))) return element.getAsJsonObject(); return versions.get(0).getAsJsonObject(); }
     static Map<String, VersionData> parseVersionMap(JsonObject response) { LinkedHashMap<String, VersionData> result = new LinkedHashMap<>(); if (response == null) return result; for (var entry : response.entrySet()) if (entry.getValue().isJsonObject()) result.put(entry.getKey(), parseVersion(entry.getValue().getAsJsonObject())); return result; }

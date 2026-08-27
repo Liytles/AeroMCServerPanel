@@ -9,6 +9,9 @@ public final class DiscordNotificationSmoke {
         String url = "https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz";
         require(DiscordNotificationEngine.validateWebhook(url).getHost().equals("discord.com"), "official webhook accepted");
         try { DiscordNotificationEngine.validateWebhook("https://discord.com.evil.example/api/webhooks/1/token"); throw new IllegalStateException("unsafe host accepted"); } catch (IllegalArgumentException expected) { }
+        rejected("https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz?redirect=1", "webhook query rejected");
+        rejected("https://user@discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz", "webhook userinfo rejected");
+        rejected("https://discord.com/api/webhooks/not-an-id/abcdefghijklmnopqrstuvwxyz", "invalid webhook id rejected");
         var settings = new DiscordNotificationEngine.Settings(true, EnumSet.of(DiscordNotificationEngine.Type.CRASH), "AeroMC Test", true, "123456789012345678");
         var event = new DiscordNotificationEngine.Event(DiscordNotificationEngine.Type.CRASH, "Sunucu çöktü", "@everyone test", "Exaroton", "SMP", true);
         require(DiscordNotificationEngine.shouldSend(settings, event), "event filter");
@@ -22,4 +25,5 @@ public final class DiscordNotificationSmoke {
         System.out.println("discord-notification-ok");
     }
     private static void require(boolean value, String name) { if (!value) throw new IllegalStateException("Smoke test failed: " + name); }
+    private static void rejected(String value, String feature) { try { DiscordNotificationEngine.validateWebhook(value); throw new IllegalStateException("Smoke test failed: " + feature); } catch (IllegalArgumentException expected) { } }
 }

@@ -1,7 +1,14 @@
 package com.aerogroup.mcpanel;
 
+import com.aerogroup.mcpanel.aeroguard.CommandSecurity;
+import com.aerogroup.mcpanel.aeroguard.CrashLoopGuard;
+import com.aerogroup.mcpanel.aeroguard.SafePathGuard;
+import com.aerogroup.mcpanel.aeroguard.SecurityAuditEngine;
+
 import java.nio.file.*;
 import java.time.*;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 
 public final class SecurityHardeningSmoke {
     public static void main(String[] args) throws Exception {
@@ -20,6 +27,11 @@ public final class SecurityHardeningSmoke {
         require(SafePathGuard.resolve(root, "plugins/example.jar", true).startsWith(root), "safe missing path accepted");
         denied(() -> SafePathGuard.requireWithin(root, root.resolve("../escape.txt"), true), "path traversal blocked");
         try { Path link = root.resolve("outside-link"); Files.createSymbolicLink(link, outside); denied(() -> SafePathGuard.requireWithin(root, link, false), "symbolic link blocked"); } catch (UnsupportedOperationException ignored) { }
+
+        denied(() -> BoundedStreams.readString(new ByteArrayInputStream("12345678901".getBytes(StandardCharsets.UTF_8)), 10, StandardCharsets.UTF_8), "oversized network response blocked");
+        Path boundedOutput = root.resolve("bounded-download.bin");
+        denied(() -> BoundedStreams.copyToFile(new ByteArrayInputStream(new byte[11]), boundedOutput, 10), "oversized download blocked");
+        require(!Files.exists(boundedOutput), "partial oversized download removed");
 
         CrashLoopGuard guard = new CrashLoopGuard(3, Duration.ofMinutes(5), Duration.ofMinutes(15)); Instant now = Instant.parse("2026-08-24T12:00:00Z");
         require(guard.record(now).restartAllowed(), "first crash restart"); require(guard.record(now.plusSeconds(30)).restartAllowed(), "second crash restart");

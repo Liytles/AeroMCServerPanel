@@ -1,4 +1,4 @@
-package com.aerogroup.mcpanel;
+package com.aerogroup.mcpanel.aeroguard;
 
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x509.*;
@@ -19,16 +19,16 @@ import java.security.cert.X509Certificate;
 import java.time.*;
 import java.util.*;
 
-/** Cihaz içinde kalıcı, kendinden imzalı LAN TLS kimliği oluşturur ve güvenli dosya izinleriyle saklar. */
-final class TlsCertificateManager {
+/** AeroGuard kalıcı LAN TLS kimliği oluşturur ve güvenli dosya izinleriyle saklar. */
+public final class TlsCertificateManager {
     private static final String ALIAS = "aeromc-remote";
     private final Path storeFile, passwordFile, certificateFile;
 
-    TlsCertificateManager(Path directory) {
+    public TlsCertificateManager(Path directory) {
         storeFile = directory.resolve("remote-tls.p12"); passwordFile = directory.resolve("remote-tls.secret"); certificateFile = directory.resolve("remote-tls.crt");
     }
 
-    synchronized Material loadOrCreate(Collection<String> requestedHosts) throws Exception {
+    public synchronized Material loadOrCreate(Collection<String> requestedHosts) throws Exception {
         LinkedHashSet<String> hosts = new LinkedHashSet<>(); hosts.add("localhost"); hosts.add("127.0.0.1");
         requestedHosts.stream().filter(Objects::nonNull).map(String::strip).filter(value -> !value.isBlank()).forEach(hosts::add);
         char[] password = null;
@@ -43,7 +43,7 @@ final class TlsCertificateManager {
         return create(hosts);
     }
 
-    Path certificateFile() { return certificateFile; }
+    public Path certificateFile() { return certificateFile; }
 
     private Material create(Set<String> hosts) throws Exception {
         Files.createDirectories(storeFile.getParent()); restrict(storeFile.getParent(), true);
@@ -78,5 +78,5 @@ final class TlsCertificateManager {
     private static void atomic(Path file, byte[] bytes) throws IOException { Path temporary = Files.createTempFile(file.getParent(), ".remote-tls-", ".tmp"); try { Files.write(temporary, bytes); restrict(temporary, false); try { Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE); } catch (AtomicMoveNotSupportedException ignored) { Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING); } } finally { Files.deleteIfExists(temporary); } }
     private static void restrict(Path path, boolean directory) { try { Files.setPosixFilePermissions(path, PosixFilePermissions.fromString(directory ? "rwx------" : "rw-------")); } catch (IOException | UnsupportedOperationException ignored) { } }
 
-    record Material(SSLContext context, X509Certificate certificate, String fingerprint, Path certificateFile) { }
+    public record Material(SSLContext context, X509Certificate certificate, String fingerprint, Path certificateFile) { }
 }

@@ -1,5 +1,7 @@
 package com.aerogroup.mcpanel;
 
+import com.aerogroup.mcpanel.aeroguard.SafePathGuard;
+
 import java.io.*;
 import java.nio.file.*;
 import java.time.LocalDateTime;

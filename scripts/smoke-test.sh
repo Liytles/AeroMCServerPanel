@@ -14,6 +14,7 @@ CLASSPATH="target/classes:target/package-input/lib/*"
 javac -encoding UTF-8 -cp "$CLASSPATH" -d "$TEST_CLASSES" \
   work/HealthFeaturesSmoke.java \
   work/AternosStatusSmoke.java \
+  work/PterodactylApiSmoke.java \
   work/ExarotonReadinessSmoke.java \
   work/ExarotonCreditSmoke.java \
   work/ExarotonFleetSmoke.java \
@@ -40,6 +41,7 @@ javac -encoding UTF-8 -cp "$CLASSPATH" -d "$TEST_CLASSES" \
 
 for TEST in \
   AternosStatusSmoke \
+  PterodactylApiSmoke \
   ExarotonReadinessSmoke \
   ExarotonCreditSmoke \
   ExarotonFleetSmoke \

@@ -10,6 +10,12 @@ public final class LanguageFeatureSmoke {
         require("Create backup".equals(LanguageManager.text("Yedek al")), "combo-box value translation");
         require("CRISIS MODE HISTORY".equals(LanguageManager.text("KRİZ MODU GEÇMİŞİ")), "crisis history translation");
         require("Also add Spark (recommended)".equals(LanguageManager.text("Spark'ı da ekle (önerilir)")), "Spark setup translation");
+        require("Automation Center".equals(LanguageManager.text("Otomasyon Merkezi")), "Exaroton automation tab translation");
+        require("EXAROTON FLEET OVERVIEW".equals(LanguageManager.text("EXAROTON FİLO ÖZETİ")), "Exaroton fleet translation");
+        require("LOW-CREDIT PROTECTION".equals(LanguageManager.text("DÜŞÜK KREDİ KORUMASI")), "credit guard translation");
+        require("ATERNOS SERVER STATUS".equals(LanguageManager.text("ATERNOS SUNUCU DURUMU")), "Aternos translation");
+        require("PTERODACTYL CONNECTION".equals(LanguageManager.text("PTERODACTYL BAĞLANTISI")), "Pterodactyl translation");
+        require("5 servers found".equals(LanguageManager.text("5 sunucu bulundu")), "dynamic provider translation");
 
         LanguageManager.apply(new Group(), "tr");
         require("Sunucu kapalı".equals(LanguageManager.text("Server offline")), "reverse Turkish translation");

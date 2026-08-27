@@ -1,5 +1,8 @@
 package com.aerogroup.mcpanel;
 
+import com.aerogroup.mcpanel.aeroguard.CommandSecurity;
+import com.aerogroup.mcpanel.aeroguard.TlsCertificateManager;
+
 import com.sun.net.httpserver.*;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;

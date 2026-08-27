@@ -5,7 +5,7 @@
 
   <groupId>com.aerogroup</groupId>
   <artifactId>aero-mc-server-panel</artifactId>
-  <version>3.1.0</version>
+  <version>4.0.0</version>
   <name>AeroMC Server Panel</name>
   <description>Cross-platform Minecraft server management desktop application</description>
 

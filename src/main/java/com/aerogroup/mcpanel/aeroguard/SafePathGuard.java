@@ -1,13 +1,13 @@
-package com.aerogroup.mcpanel;
+package com.aerogroup.mcpanel.aeroguard;
 
 import java.io.IOException;
 import java.nio.file.*;
 
-/** Sunucu dosya işlemlerinin kök dışına ve simgesel bağlantılara kaçmasını engeller. */
-final class SafePathGuard {
+/** AeroGuard sunucu dosya işlemlerinin kök dışına ve simgesel bağlantılara kaçmasını engeller. */
+public final class SafePathGuard {
     private SafePathGuard() { }
 
-    static Path serverJar(Path jar) throws IOException {
+    public static Path serverJar(Path jar) throws IOException {
         if (jar == null) throw new IOException("Sunucu JAR yolu boş.");
         Path absolute = jar.toAbsolutePath().normalize();
         if (Files.isSymbolicLink(absolute)) throw new IOException("Güvenlik nedeniyle simgesel bağlantı olan sunucu JAR'ı kullanılamaz.");
@@ -17,7 +17,7 @@ final class SafePathGuard {
         return real;
     }
 
-    static Path requireWithin(Path root, Path target, boolean allowMissingLeaf) throws IOException {
+    public static Path requireWithin(Path root, Path target, boolean allowMissingLeaf) throws IOException {
         if (root == null || target == null) throw new IOException("Güvenli dosya kökü belirlenemedi.");
         Path absoluteRoot = root.toAbsolutePath().normalize();
         if (!Files.isDirectory(absoluteRoot, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(absoluteRoot)) throw new IOException("Sunucu klasörü geçersiz veya simgesel bağlantı.");
@@ -36,7 +36,7 @@ final class SafePathGuard {
         return absoluteTarget;
     }
 
-    static Path resolve(Path root, String child, boolean allowMissingLeaf) throws IOException {
+    public static Path resolve(Path root, String child, boolean allowMissingLeaf) throws IOException {
         if (child == null || child.isBlank() || Path.of(child).isAbsolute()) throw new IOException("Geçersiz göreli dosya yolu.");
         return requireWithin(root, root.resolve(child).normalize(), allowMissingLeaf);
     }

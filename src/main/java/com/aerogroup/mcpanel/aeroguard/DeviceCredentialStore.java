@@ -1,4 +1,4 @@
-package com.aerogroup.mcpanel;
+package com.aerogroup.mcpanel.aeroguard;
 
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
@@ -14,11 +14,12 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.*;
 
-/** Bu işletim sistemi kullanıcısına ve cihaza bağlı, parolasız açılan yerel kimlik kasası. */
+/** AeroGuard tarafından kullanılan, işletim sistemi kullanıcısına ve cihaza bağlı yerel kimlik kasası. */
 public final class DeviceCredentialStore {
     public enum Kind {
         EXAROTON("exaroton", "auto-exaroton.secret"),
-        DISCORD("discord", "auto-discord.secret");
+        DISCORD("discord", "auto-discord.secret"),
+        PTERODACTYL("pterodactyl", "auto-pterodactyl.secret");
 
         private final String purpose;
         private final String fileName;
@@ -28,6 +29,10 @@ public final class DeviceCredentialStore {
     private static final Path DIRECTORY = Path.of(System.getProperty("user.home"), ".aeromc-panel");
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final int ITERATIONS = 210_000;
+    private static final int MIN_ITERATIONS = 100_000;
+    private static final int MAX_ITERATIONS = 1_000_000;
+    private static final long MAX_VAULT_BYTES = 64 * 1024;
+    private static final int MAX_SECRET_BYTES = 32 * 1024;
     private DeviceCredentialStore() { }
 
     public static boolean exists(Kind kind) { return Files.isRegularFile(file(kind)); }
@@ -40,15 +45,17 @@ public final class DeviceCredentialStore {
         if (failure != null) throw failure;
     }
 
-    static void save(Path file, String purpose, String value, String fingerprint) throws Exception {
+    public static void save(Path file, String purpose, String value, String fingerprint) throws Exception {
         if (value == null || value.isBlank()) throw new IllegalArgumentException("Gizli bilgi boş olamaz.");
+        byte[] clearValue = value.getBytes(StandardCharsets.UTF_8);
+        if (clearValue.length > MAX_SECRET_BYTES) { Arrays.fill(clearValue, (byte) 0); throw new IllegalArgumentException("Gizli bilgi güvenli boyut sınırını aştı."); }
         byte[] salt = random(16), iv = random(12), encrypted = null;
         try {
             SecretKey key = derive(fingerprint, purpose, salt, ITERATIONS);
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(128, iv));
             cipher.updateAAD(aad(purpose));
-            encrypted = cipher.doFinal(value.getBytes(StandardCharsets.UTF_8));
+            encrypted = cipher.doFinal(clearValue);
             Properties properties = new Properties();
             properties.setProperty("version", "1");
             properties.setProperty("iterations", Integer.toString(ITERATIONS));
@@ -56,6 +63,8 @@ public final class DeviceCredentialStore {
             properties.setProperty("iv", Base64.getEncoder().encodeToString(iv));
             properties.setProperty("data", Base64.getEncoder().encodeToString(encrypted));
             Files.createDirectories(file.getParent());
+            requireSafeDirectory(file.getParent());
+            if (Files.isSymbolicLink(file)) throw new IOException("Kimlik kasası simgesel bağlantı olamaz.");
             restrictDirectory(file.getParent());
             Path temporary = Files.createTempFile(file.getParent(), ".aeromc-secret-", ".tmp");
             try {
@@ -66,19 +75,28 @@ public final class DeviceCredentialStore {
                 restrict(file);
             } finally { Files.deleteIfExists(temporary); }
         } finally {
-            Arrays.fill(salt, (byte) 0); Arrays.fill(iv, (byte) 0); if (encrypted != null) Arrays.fill(encrypted, (byte) 0);
+            Arrays.fill(clearValue, (byte) 0); Arrays.fill(salt, (byte) 0); Arrays.fill(iv, (byte) 0); if (encrypted != null) Arrays.fill(encrypted, (byte) 0);
         }
     }
 
-    static String load(Path file, String purpose, String fingerprint) throws Exception {
+    public static String load(Path file, String purpose, String fingerprint) throws Exception {
+        if (Files.isSymbolicLink(file) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) throw new IOException("Kimlik kasası dosyası geçersiz.");
+        requireSafeDirectory(file.toAbsolutePath().normalize().getParent());
+        if (Files.size(file) > MAX_VAULT_BYTES) throw new IOException("Kimlik kasası dosyası güvenli boyut sınırını aştı.");
         Properties properties = new Properties();
         try (var reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) { properties.load(reader); }
-        byte[] salt = Base64.getDecoder().decode(required(properties, "salt"));
-        byte[] iv = Base64.getDecoder().decode(required(properties, "iv"));
-        byte[] encrypted = Base64.getDecoder().decode(required(properties, "data"));
+        if (!"1".equals(required(properties, "version"))) throw new IOException("Kimlik kasası sürümü desteklenmiyor.");
+        byte[] salt, iv, encrypted;
+        try {
+            salt = Base64.getDecoder().decode(required(properties, "salt"));
+            iv = Base64.getDecoder().decode(required(properties, "iv"));
+            encrypted = Base64.getDecoder().decode(required(properties, "data"));
+        } catch (IllegalArgumentException error) { throw new IOException("Kimlik kasası kodlaması bozuk.", error); }
         byte[] clear = null;
         try {
             int iterations = Integer.parseInt(properties.getProperty("iterations", Integer.toString(ITERATIONS)));
+            if (iterations < MIN_ITERATIONS || iterations > MAX_ITERATIONS || salt.length != 16 || iv.length != 12 || encrypted.length < 16 || encrypted.length > MAX_SECRET_BYTES + 16)
+                throw new IOException("Kimlik kasası güvenlik parametreleri geçersiz.");
             SecretKey key = derive(fingerprint, purpose, salt, iterations);
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(128, iv));
@@ -100,6 +118,10 @@ public final class DeviceCredentialStore {
     private static byte[] aad(String purpose) { return ("AeroMC/device-vault/v1/" + purpose).getBytes(StandardCharsets.UTF_8); }
     private static byte[] random(int size) { byte[] value = new byte[size]; RANDOM.nextBytes(value); return value; }
     private static String required(Properties values, String key) throws IOException { String value = values.getProperty(key); if (value == null || value.isBlank()) throw new IOException("Kimlik kasası bozuk."); return value; }
+    private static void requireSafeDirectory(Path directory) throws IOException {
+        if (directory == null || Files.isSymbolicLink(directory) || !Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS))
+            throw new IOException("Kimlik kasası klasörü geçersiz veya simgesel bağlantı.");
+    }
     private static void restrict(Path file) { try { Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-------")); } catch (IOException | UnsupportedOperationException ignored) { } }
     private static void restrictDirectory(Path directory) { try { Files.setPosixFilePermissions(directory, PosixFilePermissions.fromString("rwx------")); } catch (IOException | UnsupportedOperationException ignored) { } }
 

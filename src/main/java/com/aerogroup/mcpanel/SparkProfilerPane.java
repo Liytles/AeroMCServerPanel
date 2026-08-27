@@ -33,8 +33,9 @@ final class SparkProfilerPane {
 
     private final ServerManager manager;
     private final ExarotonPane exaroton;
+    private final PterodactylPane pterodactyl;
     private final HostServices hostServices;
-    private final BooleanSupplier remote;
+    private final Supplier<String> provider;
     private final BooleanSupplier online;
     private final DoubleSupplier currentTps;
     private final Supplier<String> source;
@@ -55,14 +56,15 @@ final class SparkProfilerPane {
     private volatile boolean profileRunning;
     private Instant deadline;
 
-    SparkProfilerPane(ServerManager manager, ExarotonPane exaroton, HostServices hostServices,
-                      BooleanSupplier remote, BooleanSupplier online, DoubleSupplier currentTps,
+    SparkProfilerPane(ServerManager manager, ExarotonPane exaroton, PterodactylPane pterodactyl, HostServices hostServices,
+                      Supplier<String> provider, BooleanSupplier online, DoubleSupplier currentTps,
                       Supplier<String> source, BiConsumer<String, String> eventRecorder,
                       Consumer<String> findingRecorder) {
         this.manager = manager;
         this.exaroton = exaroton;
+        this.pterodactyl = pterodactyl;
         this.hostServices = hostServices;
-        this.remote = remote;
+        this.provider = provider;
         this.online = online;
         this.currentTps = currentTps;
         this.source = source;
@@ -133,10 +135,10 @@ final class SparkProfilerPane {
         startButton.setDisable(true);
         duration.setDisable(true);
         state.setText("Spark komutu sunucuya gönderiliyor...");
-        if (remote.getAsBoolean()) {
+        if (!isLocal()) {
             Task<Void> task = new Task<>() {
                 @Override protected Void call() throws Exception {
-                    exaroton.executeAdminCommand(command).join();
+                    remoteCommand(command);
                     return null;
                 }
             };
@@ -214,13 +216,13 @@ final class SparkProfilerPane {
 
     private void requestTps() {
         try {
-            if (!remote.getAsBoolean()) {
+            if (isLocal()) {
                 manager.command("spark tps");
                 return;
             }
             Task<Void> task = new Task<>() {
                 @Override protected Void call() throws Exception {
-                    exaroton.executeAdminCommand("spark tps").join();
+                    remoteCommand("spark tps");
                     return null;
                 }
             };
@@ -230,6 +232,9 @@ final class SparkProfilerPane {
             finalizeReport(fallbackTps());
         }
     }
+
+    private boolean isLocal() { return "Yerel JAR".equals(provider.get()); }
+    private void remoteCommand(String command) throws Exception { if ("Pterodactyl".equals(provider.get())) pterodactyl.executeAdminCommand(command).join(); else exaroton.executeAdminCommand(command).join(); }
 
     private void finalizeReport(double tps) {
         if (pendingReport == null) return;

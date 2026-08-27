@@ -1,12 +1,18 @@
 package com.aerogroup.mcpanel;
 
+import com.aerogroup.mcpanel.aeroguard.CommandSecurity;
+import com.aerogroup.mcpanel.aeroguard.SafePathGuard;
+
 import javafx.animation.*;
 import javafx.application.Platform;
 import javafx.application.HostServices;
 import javafx.collections.*;
 import javafx.concurrent.Task;
 import javafx.geometry.*;
+import javafx.scene.Cursor;
 import javafx.scene.control.*;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
 import javafx.util.Duration;
@@ -30,6 +36,7 @@ public final class MainController {
     private final ServerManager manager;
     private final ExarotonPane exarotonPane;
     private final AternosPane aternosPane;
+    private final PterodactylPane pterodactylPane;
     private final DashboardPane dashboardPane = new DashboardPane();
     private final ManagementPane managementPane;
     private ProToolsPane proToolsPane;
@@ -46,14 +53,15 @@ public final class MainController {
     public MainController(HostServices hostServices) {
         exarotonPane = new ExarotonPane(config);
         aternosPane = new AternosPane(hostServices);
+        pterodactylPane = new PterodactylPane(config, hostServices);
         manager = new ServerManager(new ServerManager.Listener() {
-            public void onConsole(String line) { Platform.runLater(() -> console.append(line)); if (proToolsPane != null) proToolsPane.onConsole(line); if (playerMapPane != null) playerMapPane.onLocalConsole(line); }
+            public void onConsole(String line) { console.append(line); if (proToolsPane != null) proToolsPane.onConsole(line); if (playerMapPane != null) playerMapPane.onLocalConsole(line); }
             public void onState(boolean running, String text) { Platform.runLater(() -> { updateState(running, text); boolean crashed = text.toLowerCase().contains("çöktü"); if (crashed) DesktopNotifier.show(LOCAL_NOTIFICATION_SOURCE, "Yerel sunucu", text); else NotificationCenter.shared().publish(running ? NotificationCenter.Severity.SUCCESS : NotificationCenter.Severity.INFO, LOCAL_NOTIFICATION_SOURCE, "Yerel sunucu durumu", text); if (proToolsPane != null) proToolsPane.onState(running, text); }); }
             public void onPlayers(List<String> names) { Platform.runLater(() -> { for (String name : names) if (!knownPlayers.contains(name)) DesktopNotifier.show(LOCAL_NOTIFICATION_SOURCE, "Oyuncu katıldı", name + " sunucuya katıldı."); knownPlayers.clear(); knownPlayers.addAll(names); players.setAll(names); if (proToolsPane != null) proToolsPane.onPlayers(names); if (playerMapPane != null) playerMapPane.onLocalPlayers(names); }); }
         }, config);
-        managementPane = new ManagementPane(manager, exarotonPane);
-        proToolsPane = new ProToolsPane(manager, exarotonPane, config, hostServices, this::openExarotonAutomation);
-        if (config.isLiveMapEnabled()) playerMapPane = new PlayerMapPane(manager, exarotonPane);
+        managementPane = new ManagementPane(manager, exarotonPane, pterodactylPane);
+        proToolsPane = new ProToolsPane(manager, exarotonPane, pterodactylPane, config, hostServices, this::openExarotonAutomation);
+        if (config.isLiveMapEnabled()) playerMapPane = new PlayerMapPane(manager, exarotonPane, pterodactylPane);
         nextGenPane = new NextGenPane(manager, exarotonPane, config, hostServices, this::useInstalledJar);
         settingsPane = new SettingsPane(config, this::setLiveMapEnabled, this::setAutomaticCredentialVaultEnabled, this::showFeatureTour, hostServices);
         playerRefresh = new Timeline(new KeyFrame(Duration.seconds(15), event -> manager.requestPlayers()));
@@ -71,7 +79,8 @@ public final class MainController {
         Tab local = new Tab("Yerel JAR", content()); local.setClosable(false);
         exarotonProviderTab = new Tab("Exaroton", exarotonPane.buildView()); exarotonProviderTab.setClosable(false);
         Tab aternos = new Tab("Aternos", aternosPane.buildView()); aternos.setClosable(false);
-        TabPane serverProviders = new TabPane(local, exarotonProviderTab, aternos); serverProviders.getStyleClass().add("server-provider-tabs");
+        Tab pterodactyl = new Tab("Pterodactyl", pterodactylPane.buildView()); pterodactyl.setClosable(false);
+        TabPane serverProviders = new TabPane(local, exarotonProviderTab, aternos, pterodactyl); serverProviders.getStyleClass().add("server-provider-tabs");
         serversTab = new Tab("Sunucular", serverProviders);
         Tab management = new Tab("Yönetim", managementPane.buildView());
         Tab proTools = new Tab("Kontrol Merkezi", proToolsPane.buildView());
@@ -87,8 +96,31 @@ public final class MainController {
         Label logo = new Label("AEROMC"); logo.getStyleClass().add("logo");
         Label title = new Label("Server Panel"); title.getStyleClass().add("header-title");
         Region spacer = new Region(); HBox.setHgrow(spacer, Priority.ALWAYS);
+        ImageView guardIcon = new ImageView(new Image(Objects.requireNonNull(MainController.class.getResourceAsStream("/icons/aeroguard-v2.png")), 25, 25, true, true));
+        guardIcon.getStyleClass().add("aeroguard-icon");
+        Label guardStatus = new Label();
+        guardStatus.textProperty().bind(javafx.beans.binding.Bindings.createStringBinding(() -> LanguageManager.text("AeroGuard V2.2 Aktif"), LanguageManager.englishProperty()));
+        guardStatus.getStyleClass().add("aeroguard-status");
+        HBox guardBadge = new HBox(7, guardIcon, guardStatus); guardBadge.setAlignment(Pos.CENTER_LEFT); guardBadge.getStyleClass().add("aeroguard-badge");
+        guardBadge.setCursor(Cursor.HAND); guardBadge.setFocusTraversable(true);
+        Tooltip.install(guardBadge, new Tooltip(LanguageManager.text("AeroGuard hakkında bilgi")));
+        guardBadge.setOnMouseClicked(event -> showAeroGuardInfo());
+        guardBadge.setOnKeyPressed(event -> { if (event.getCode() == javafx.scene.input.KeyCode.ENTER || event.getCode() == javafx.scene.input.KeyCode.SPACE) showAeroGuardInfo(); });
         Label mode = new Label("Çoklu Sunucu Yönetim Merkezi"); mode.getStyleClass().add("status-text");
-        HBox header = new HBox(10, logo, title, spacer, mode); header.setAlignment(Pos.CENTER_LEFT); header.getStyleClass().add("header"); return header;
+        HBox header = new HBox(10, logo, title, spacer, guardBadge, mode); header.setAlignment(Pos.CENTER_LEFT); header.getStyleClass().add("header"); return header;
+    }
+    private void showAeroGuardInfo() {
+        Alert info = new Alert(Alert.AlertType.INFORMATION);
+        info.setTitle(LanguageManager.text("AeroGuard V2.2"));
+        info.setHeaderText(LanguageManager.text("AeroMC'nin etkin güvenlik katmanı"));
+        Label description = new Label(LanguageManager.text("AeroGuard; sunucu dosyalarını, API anahtarlarını, uzaktan erişimi ve kritik yönetim işlemlerini tek güvenlik katmanında korur."));
+        description.setWrapText(true);
+        Label protections = new Label(LanguageManager.text("• SafePathGuard ile klasör dışına ve simgesel bağlantılara kaçışı engeller.\n• Kritik konsol komutlarında kullanıcı onayı ister.\n• Gizli bilgileri AES-256-GCM kasasında saklar ve kopyalamayı engeller.\n• Uzaktan erişimi TLS ile şifreler ve sertifika parmak izi sunar.\n• Dosya izinlerini, veri sınırlarını ve çökme döngülerini denetler."));
+        protections.setWrapText(true);
+        Label state = new Label(LanguageManager.text("Durum: AeroGuard V2.2 etkin ve korumalar çalışıyor."));
+        state.getStyleClass().add("aeroguard-dialog-state");
+        VBox content = new VBox(12, description, protections, state); content.setPrefWidth(560);
+        info.getDialogPane().setContent(content); info.showAndWait();
     }
     private SplitPane content() {
         VBox left = new VBox(14, serverCard(), consoleCard()); left.setPadding(new Insets(18));
@@ -145,7 +177,7 @@ public final class MainController {
     private void useInstalledJar(Path jar, Integer ram) { jarPath.setText(jar.toAbsolutePath().toString()); manager.configure(jar); config.setServerJar(jar); config.setMemoryMb(ram); memory.getValueFactory().setValue(ram); try { config.save(); } catch (IOException ignored) { } }
     private void setLiveMapEnabled(Boolean enabled) {
         if (enabled && playerMapPane == null) {
-            playerMapPane = new PlayerMapPane(manager, exarotonPane); liveMapTab = new Tab(LanguageManager.text("Canlı Harita"), playerMapPane.buildView()); liveMapTab.setClosable(false);
+            playerMapPane = new PlayerMapPane(manager, exarotonPane, pterodactylPane); liveMapTab = new Tab(LanguageManager.text("Canlı Harita"), playerMapPane.buildView()); liveMapTab.setClosable(false);
             int index = nextGenTab == null ? mainTabs.getTabs().size() : mainTabs.getTabs().indexOf(nextGenTab); mainTabs.getTabs().add(Math.max(0, index), liveMapTab);
             if ("en".equals(LanguageManager.load()) && liveMapTab.getContent() instanceof javafx.scene.Parent parent) LanguageManager.apply(parent, "en");
         } else if (!enabled && playerMapPane != null) {
@@ -154,6 +186,7 @@ public final class MainController {
     }
     private void setAutomaticCredentialVaultEnabled(Boolean enabled) {
         exarotonPane.setAutomaticCredentialVaultEnabled(enabled);
+        pterodactylPane.setAutomaticCredentialVaultEnabled(enabled);
         if (proToolsPane != null) proToolsPane.setAutomaticCredentialVaultEnabled(enabled);
     }
     public void showFeatureTourIfNeeded(javafx.stage.Window owner) { if (!config.isFeatureTourCompleted()) showFeatureTour(owner); }
@@ -228,5 +261,5 @@ public final class MainController {
         } catch (IOException | IllegalArgumentException error) { alert("Komut gönderilemedi", error.getMessage()); return false; }
     }
     private void alert(String title, String message) { Alert alert = new Alert(Alert.AlertType.ERROR, LanguageManager.text(message == null ? "Bilinmeyen hata" : message), ButtonType.OK); alert.setTitle(LanguageManager.text(title)); alert.setHeaderText(LanguageManager.text(title)); alert.showAndWait(); }
-    public void shutdown() { playerRefresh.stop(); scheduledBackup.stop(); nextGenPane.shutdown(); if (playerMapPane != null) playerMapPane.shutdown(); if (proToolsPane != null) proToolsPane.shutdown(); manager.shutdown(); exarotonPane.shutdown(); aternosPane.shutdown(); dashboardPane.shutdown(); }
+    public void shutdown() { playerRefresh.stop(); scheduledBackup.stop(); nextGenPane.shutdown(); if (playerMapPane != null) playerMapPane.shutdown(); if (proToolsPane != null) proToolsPane.shutdown(); manager.shutdown(); exarotonPane.shutdown(); aternosPane.shutdown(); pterodactylPane.shutdown(); dashboardPane.shutdown(); }
 }

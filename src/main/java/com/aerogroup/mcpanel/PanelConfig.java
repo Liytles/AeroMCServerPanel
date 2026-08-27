@@ -20,6 +20,7 @@ public final class PanelConfig {
     private boolean automaticUpdateCheckEnabled = true;
     private boolean featureTourCompleted;
     private String updateChannel = "stable";
+    private String pterodactylPanelUrl = "";
     private boolean crisisModeEnabled;
     private double crisisTpsThreshold = 16.0;
     private double crisisRamThreshold = 90.0;
@@ -46,6 +47,7 @@ public final class PanelConfig {
             config.automaticUpdateCheckEnabled = Boolean.parseBoolean(values.getProperty("automaticUpdateCheckEnabled", "true"));
             config.featureTourCompleted = Boolean.parseBoolean(values.getProperty("featureTourCompleted", "false"));
             config.updateChannel = "beta".equalsIgnoreCase(values.getProperty("updateChannel", "stable")) ? "beta" : "stable";
+            config.pterodactylPanelUrl = values.getProperty("pterodactylPanelUrl", "").trim();
             config.crisisModeEnabled = Boolean.parseBoolean(values.getProperty("crisisModeEnabled", "false"));
             config.crisisTpsThreshold = Double.parseDouble(values.getProperty("crisisTpsThreshold", "16.0"));
             config.crisisRamThreshold = Double.parseDouble(values.getProperty("crisisRamThreshold", "90.0"));
@@ -70,6 +72,7 @@ public final class PanelConfig {
         values.setProperty("automaticUpdateCheckEnabled", Boolean.toString(automaticUpdateCheckEnabled));
         values.setProperty("featureTourCompleted", Boolean.toString(featureTourCompleted));
         values.setProperty("updateChannel", updateChannel);
+        values.setProperty("pterodactylPanelUrl", pterodactylPanelUrl);
         values.setProperty("crisisModeEnabled", Boolean.toString(crisisModeEnabled));
         values.setProperty("crisisTpsThreshold", Double.toString(crisisTpsThreshold));
         values.setProperty("crisisRamThreshold", Double.toString(crisisRamThreshold));
@@ -103,6 +106,8 @@ public final class PanelConfig {
     public void setFeatureTourCompleted(boolean value) { featureTourCompleted = value; }
     public String getUpdateChannel() { return updateChannel; }
     public void setUpdateChannel(String value) { updateChannel = "beta".equalsIgnoreCase(value) ? "beta" : "stable"; }
+    public String getPterodactylPanelUrl() { return pterodactylPanelUrl; }
+    public void setPterodactylPanelUrl(String value) { pterodactylPanelUrl = value == null ? "" : value.trim(); }
     public boolean isCrisisModeEnabled() { return crisisModeEnabled; }
     public void setCrisisModeEnabled(boolean value) { crisisModeEnabled = value; }
     public double getCrisisTpsThreshold() { return crisisTpsThreshold; }

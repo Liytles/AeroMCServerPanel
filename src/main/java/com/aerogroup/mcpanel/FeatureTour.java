@@ -15,7 +15,7 @@ public final class FeatureTour {
 
     private static final List<Page> PAGES = List.of(
             new Page("AEROMC'YE HOŞ GELDİN", "Bütün sunucuların tek merkezde",
-                    "Yerel JAR, Exaroton ve Aternos sunucularını Sunucular bölümünden yönetebilirsin. Ana Panel ise favorilerini ve önemli bildirimlerini tek bakışta gösterir."),
+                    "Yerel JAR, Exaroton, Aternos ve Pterodactyl sunucularını Sunucular bölümünden yönetebilirsin. Ana Panel ise favorilerini ve önemli bildirimlerini tek bakışta gösterir."),
             new Page("SUNUCUNU KORU", "Sorunu büyümeden yakala",
                     "Kontrol Merkezi; sağlık puanı, Kriz Modu, Çökme Doktoru ve Tek Tık Lag Analizi ile performans sorunlarını anlaşılır biçimde açıklar."),
             new Page("İŞLERİ OTOMATİKLEŞTİR", "Yedek, görev ve kredi koruması",

@@ -1,5 +1,8 @@
 package com.aerogroup.mcpanel;
 
+import com.aerogroup.mcpanel.aeroguard.CommandSecurity;
+import com.aerogroup.mcpanel.aeroguard.SafePathGuard;
+
 import com.exaroton.api.server.config.ConfigOption;
 import javafx.application.Platform;
 import javafx.collections.*;
@@ -18,7 +21,8 @@ import java.util.*;
 public final class ManagementPane {
     private final ServerManager local;
     private final ExarotonPane exaroton;
-    private final ComboBox<String> provider = new ComboBox<>(FXCollections.observableArrayList("Yerel JAR", "Exaroton"));
+    private final PterodactylPane pterodactyl;
+    private final ComboBox<String> provider = new ComboBox<>(FXCollections.observableArrayList("Yerel JAR", "Exaroton", "Pterodactyl"));
     private final TextField player = new TextField(), reason = new TextField();
     private final TextField motd = new TextField();
     private final Spinner<Integer> maxPlayers = new Spinner<>(1, 500, 20);
@@ -28,10 +32,12 @@ public final class ManagementPane {
     private final ObservableList<String> audit = FXCollections.observableArrayList();
     private final Label providerStatus = new Label();
 
-    public ManagementPane(ServerManager local, ExarotonPane exaroton) {
+    public ManagementPane(ServerManager local, ExarotonPane exaroton, PterodactylPane pterodactyl) {
         this.local = local;
         this.exaroton = exaroton;
+        this.pterodactyl = pterodactyl;
         exaroton.activeServerNameProperty().addListener((observable, oldName, newName) -> updateProviderStatus());
+        pterodactyl.activeServerNameProperty().addListener((observable, oldName, newName) -> updateProviderStatus());
     }
     public Node buildView() {
         provider.getSelectionModel().selectFirst(); provider.setOnAction(event -> updateProviderStatus());
@@ -66,7 +72,7 @@ public final class ManagementPane {
         String username; try { username = CommandSecurity.playerName(player.getText()); } catch (IllegalArgumentException invalid) { error(invalid.getMessage()); return; }
         if (needsConfirmation) { Alert confirm = new Alert(Alert.AlertType.CONFIRMATION, username + " için “" + operation + "” işlemi uygulansın mı?", ButtonType.YES, ButtonType.NO); if (confirm.showAndWait().orElse(ButtonType.NO) != ButtonType.YES) return; }
         String providerName = provider.getValue(), detail; try { detail = CommandSecurity.singleLine(reason.getText(), 160); } catch (IllegalArgumentException invalid) { error(invalid.getMessage()); return; }
-        Task<Void> task = new Task<>() { protected Void call() throws Exception { if (providerName.equals("Yerel JAR")) localOperation(operation, username, detail); else remoteOperation(operation, username, detail); return null; } };
+        Task<Void> task = new Task<>() { protected Void call() throws Exception { if (providerName.equals("Yerel JAR")) localOperation(operation, username, detail); else if (providerName.equals("Exaroton")) remoteOperation(operation, username, detail); else pterodactylOperation(operation, username, detail); return null; } };
         task.setOnSucceeded(event -> log("BAŞARILI", providerName, operation, username)); task.setOnFailed(event -> { log("HATA", providerName, operation, username); error(rootMessage(task.getException())); }); run(task, "player-admin");
     }
     private void localOperation(String operation, String username, String detail) throws Exception {
@@ -86,15 +92,19 @@ public final class ManagementPane {
             default -> throw new IllegalArgumentException("Bilinmeyen işlem");
         }
     }
+    private void pterodactylOperation(String operation, String username, String detail) {
+        String command = switch (operation) { case "whitelist-add" -> "whitelist add " + username; case "whitelist-remove" -> "whitelist remove " + username; case "op" -> "op " + username; case "deop" -> "deop " + username; case "kick" -> "kick " + username + suffix(detail); case "ban" -> "ban " + username + suffix(detail); case "unban" -> "pardon " + username; case "message" -> "tell " + username + " " + (detail.isBlank() ? "Merhaba!" : detail); default -> throw new IllegalArgumentException("Bilinmeyen işlem"); };
+        pterodactyl.executeAdminCommand(command).join();
+    }
     private String suffix(String value) { return value.isBlank() ? "" : " " + value; }
     private void loadSettings() {
         String providerName = provider.getValue();
-        Task<Map<String, Object>> task = new Task<>() { protected Map<String, Object> call() throws Exception { return providerName.equals("Yerel JAR") ? loadLocalSettings() : loadRemoteSettings(); } };
+        Task<Map<String, Object>> task = new Task<>() { protected Map<String, Object> call() throws Exception { return providerName.equals("Yerel JAR") ? loadLocalSettings() : providerName.equals("Exaroton") ? loadRemoteSettings() : pterodactyl.loadServerOptions().join(); } };
         task.setOnSucceeded(event -> { applyToForm(task.getValue()); log("BAŞARILI", providerName, "ayarları-yükle", "-"); }); task.setOnFailed(event -> error(rootMessage(task.getException()))); run(task, "settings-load");
     }
     private void saveSettings() {
         String providerName = provider.getValue(); Map<String, Object> values = formValues();
-        Task<Void> task = new Task<>() { protected Void call() throws Exception { if (providerName.equals("Yerel JAR")) saveLocalSettings(values); else exaroton.saveServerOptions(values).join(); return null; } };
+        Task<Void> task = new Task<>() { protected Void call() throws Exception { if (providerName.equals("Yerel JAR")) saveLocalSettings(values); else if (providerName.equals("Exaroton")) exaroton.saveServerOptions(values).join(); else pterodactyl.saveServerOptions(values).join(); return null; } };
         task.setOnSucceeded(event -> { log("BAŞARILI", providerName, "ayarları-kaydet", "-"); DesktopNotifier.show("AeroMC", providerName + " ayarları kaydedildi."); }); task.setOnFailed(event -> error(rootMessage(task.getException()))); run(task, "settings-save");
     }
     private Map<String, Object> formValues() { Map<String, Object> values = new LinkedHashMap<>(); values.put("motd", motd.getText()); values.put("max-players", maxPlayers.getValue()); values.put("gamemode", gamemode.getValue()); values.put("difficulty", difficulty.getValue()); values.put("pvp", pvp.isSelected()); values.put("white-list", whitelist.isSelected()); return values; }
@@ -119,7 +129,7 @@ public final class ManagementPane {
     private boolean bool(Object value, boolean fallback) { return value == null ? fallback : value instanceof Boolean b ? b : Boolean.parseBoolean(String.valueOf(value)); }
     public void updateProviderStatus() {
         String selectedProvider = provider.getValue();
-        providerStatus.setText("Yerel JAR".equals(selectedProvider) ? (local.isRunning() ? "Yerel sunucu online" : "Yerel sunucu kapalı") : exaroton.getActiveServerName());
+        providerStatus.setText("Yerel JAR".equals(selectedProvider) ? (local.isRunning() ? "Yerel sunucu online" : "Yerel sunucu kapalı") : "Exaroton".equals(selectedProvider) ? exaroton.getActiveServerName() : pterodactyl.getActiveServerName());
         if (!providerStatus.getStyleClass().contains("muted")) providerStatus.getStyleClass().add("muted");
     }
     private void addField(GridPane grid, int column, int row, String title, Node field, int span) { VBox box = new VBox(4, new Label(title), field); grid.add(box, column, row, span, 1); GridPane.setHgrow(box, Priority.ALWAYS); }

@@ -25,6 +25,7 @@ public final class UpdateService {
     private static final String OWNER = "Liytles", REPOSITORY = "AeroMCServerPanel";
     private static final URI API = URI.create("https://api.github.com/repos/" + OWNER + "/" + REPOSITORY + "/releases");
     private static final long MAX_INSTALLER_BYTES = 750L * 1024 * 1024;
+    private static final int MAX_RELEASE_BYTES = 2_000_000;
     private static final Pattern CHECKSUM = Pattern.compile("(?i)(?<![a-f0-9])([a-f0-9]{64})(?![a-f0-9])");
     private static final Pattern SAFE_NAME = Pattern.compile("[A-Za-z0-9._-]{1,180}");
     private static final Pattern SAFE_TAG = Pattern.compile("[vV]?\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?");
@@ -33,11 +34,11 @@ public final class UpdateService {
     public ReleaseInfo check(Channel channel) throws Exception {
         URI endpoint = channel == Channel.STABLE ? URI.create(API + "/latest") : URI.create(API + "?per_page=20");
         HttpRequest request = request(endpoint).header("Accept", "application/vnd.github+json").GET().build();
-        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        HttpResponse<InputStream> response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        String body = BoundedStreams.readString(response.body(), MAX_RELEASE_BYTES, StandardCharsets.UTF_8);
         if (response.statusCode() == 404) throw new IOException("GitHub sürümü bulunamadı. Depo private ise güncelleme merkezi anonim erişemez.");
         if (response.statusCode() / 100 != 2) throw new IOException("GitHub sürüm kontrolü HTTP " + response.statusCode() + " ile reddedildi.");
-        if (response.body().length() > 2_000_000) throw new IOException("GitHub sürüm yanıtı beklenenden büyük.");
-        JsonElement parsed = JsonParser.parseString(response.body());
+        JsonElement parsed = JsonParser.parseString(body);
         JsonObject release;
         if (channel == Channel.STABLE) release = parsed.getAsJsonObject();
         else {
@@ -133,7 +134,7 @@ public final class UpdateService {
     static String sha256(Path file) throws Exception { MessageDigest digest = MessageDigest.getInstance("SHA-256"); try (InputStream input = Files.newInputStream(file)) { byte[] buffer = new byte[64 * 1024]; int count; while ((count = input.read(buffer)) >= 0) if (count > 0) digest.update(buffer, 0, count); } return HexFormat.of().formatHex(digest.digest()); }
 
     private String fetchChecksum(Asset checksum, String installerName) throws Exception {
-        HttpResponse<String> response = http.send(request(checksum.url()).GET().build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.US_ASCII)); validateResponse(response, checksum.url()); return expectedChecksum(response.body(), installerName);
+        HttpResponse<InputStream> response = http.send(request(checksum.url()).GET().build(), HttpResponse.BodyHandlers.ofInputStream()); validateResponse(response, checksum.url()); return expectedChecksum(BoundedStreams.readString(response.body(), 16_384, StandardCharsets.US_ASCII), installerName);
     }
     private HttpRequest.Builder request(URI uri) throws IOException { validateUri(uri); return HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(30)).header("User-Agent", "AeroMC-Server-Panel/" + BuildInfo.version()); }
     private static void validateAsset(Asset asset) throws IOException { if (!SAFE_NAME.matcher(asset.name()).matches()) throw new IOException("Güvensiz yayın dosya adı."); validateUri(asset.url()); }

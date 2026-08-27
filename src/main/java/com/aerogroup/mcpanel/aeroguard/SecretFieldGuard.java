@@ -1,4 +1,4 @@
-package com.aerogroup.mcpanel;
+package com.aerogroup.mcpanel.aeroguard;
 
 import javafx.scene.input.ContextMenuEvent;
 import javafx.scene.input.KeyCode;
@@ -6,7 +6,7 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.control.PasswordField;
 
-/** Gizli alanların panoya veya sürükle-bırak yoluyla çıkarılmasını engeller. */
+/** AeroGuard gizli alanların panoya veya sürükle-bırak yoluyla çıkarılmasını engeller. */
 public final class SecretFieldGuard {
     private SecretFieldGuard() { }
 
