@@ -7,7 +7,7 @@ ENGLISH
 installing or using the application, you agree to these terms.
 
 2. AeroMC is provided for personal server administration by authorized users.
-The application and source code remain Copyright (c) 2026 The Aero Group. No
+The application and source code remain Copyright (c) 2026 Liytles. No
 right to redistribute, sell, sublicense, modify, or republish the application
 or source code is granted without separate written permission.
 
