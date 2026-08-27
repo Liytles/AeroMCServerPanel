@@ -40,7 +40,7 @@ TÜRKÇE
 Uygulamayı kurarak veya kullanarak bu koşulları kabul etmiş olursunuz.
 
 2. AeroMC, yetkili kullanıcıların kişisel sunucu yönetimi için sunulur.
-Uygulama ve kaynak kodunun hakları Copyright (c) 2026 The Aero Group'a aittir.
+Uygulama ve kaynak kodunun hakları Copyright (c) 2026 Liytles'a aittir.
 Ayrı yazılı izin olmadan uygulamayı veya kaynak kodunu yeniden dağıtma, satma,
 alt lisanslama, değiştirme ya da yeniden yayımlama hakkı verilmez.
 
