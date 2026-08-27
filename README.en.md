@@ -1,5 +1,6 @@
 # AeroMC Server Panel
 
+WARNİNG: THİS VERSİON İS **NOT** STABLE. DOWNLOADING IS AT YOUR OWN RESPONSIBILITY.
 [Türkçe](README.md) · **English**
 
 >  Pre-release: **4.0.0** · [V4 roadmap](V4-ROADMAP.md) · [4.0 release notes](release-notes/v4.0.0.md)
