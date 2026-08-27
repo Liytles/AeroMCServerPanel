@@ -20,7 +20,7 @@ public final class DiscordNotificationSmoke {
         JsonObject mentions = payload.getAsJsonObject("allowed_mentions"); require(mentions.getAsJsonArray("parse").isEmpty(), "unsafe mentions disabled"); require(mentions.getAsJsonArray("roles").size() == 1, "one explicit role");
         require(DiscordWebhookClient.retryMillis("{\"retry_after\":1.25}") == 1250, "rate-limit retry parsing");
         Path file = Files.createTempFile("aeromc-discord-", ".secret"); char[] password = "güvenli-parola".toCharArray();
-        try { DiscordWebhookStore.save(file, url, password); require(!Files.readString(file).contains(url), "webhook encrypted at rest"); require(DiscordWebhookStore.load(file, password).equals(url), "encrypted webhook roundtrip"); }
+        try { DiscordWebhookStore.save(file, url, password); String stored = Files.readString(file); require(!stored.contains(url), "webhook encrypted at rest"); require(stored.contains("version=2") && stored.contains("iterations=600000"), "AeroGuard V2.3 webhook vault format"); require(DiscordWebhookStore.load(file, password).equals(url), "encrypted webhook roundtrip"); }
         finally { Arrays.fill(password, '\0'); Files.deleteIfExists(file); }
         System.out.println("discord-notification-ok");
     }

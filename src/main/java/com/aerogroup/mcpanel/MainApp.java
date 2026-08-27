@@ -17,7 +17,10 @@ public final class MainApp extends Application {
         Scene scene = new Scene(root, 1120, 720);
         scene.getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
         try (var icon = getClass().getResourceAsStream("/icons/aeromc.png")) { if (icon != null) stage.getIcons().add(new Image(icon)); } catch (Exception ignored) { }
-        stage.setTitle("AeroMC Server Panel • " + BuildInfo.displayVersion()); stage.setMinWidth(920); stage.setMinHeight(620); stage.setScene(scene); stage.show();
+        stage.setTitle("AeroMC Server Panel • " + BuildInfo.displayVersion()); stage.setMinWidth(920); stage.setMinHeight(620); stage.setScene(scene);
+        stage.iconifiedProperty().addListener((observable, oldValue, iconified) -> controller.setWindowActive(stage.isShowing() && !iconified));
+        stage.showingProperty().addListener((observable, oldValue, showing) -> controller.setWindowActive(showing && !stage.isIconified()));
+        stage.show(); controller.setWindowActive(true);
         Platform.runLater(() -> controller.showFeatureTourIfNeeded(stage));
         stage.setOnCloseRequest(event -> controller.shutdown());
     }

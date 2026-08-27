@@ -15,12 +15,13 @@ public final class SecurityAuditEngine {
     public record Report(int score, List<Finding> findings) { public String state() { return score >= 90 ? "Güçlü" : score >= 70 ? "İyi" : score >= 45 ? "Dikkat" : "Kritik"; } }
 
     private static final Path DATA = Path.of(System.getProperty("user.home"), ".aeromc-panel");
-    private static final List<String> SENSITIVE = List.of("auto-exaroton.secret", "auto-discord.secret", "auto-pterodactyl.secret", "exaroton.token", "discord-webhook.secret", "remote-users.properties", "remote-tls.p12", "remote-tls.secret", "security.log", "config.properties");
+    private static final List<String> SENSITIVE = List.of("auto-exaroton.secret", "auto-discord.secret", "auto-pterodactyl.secret", "exaroton.token", "discord-webhook.secret", "remote-users.properties", "remote-tls.p12", "remote-tls.secret", "security.log", "security.log.1", "config.properties");
     private SecurityAuditEngine() { }
 
     public static Report scan(PanelConfig config) {
         List<Finding> findings = new ArrayList<>(); int score = 100;
-        if (Files.exists(DATA) && !privatePermissions(DATA, true)) { score -= 25; findings.add(new Finding(Level.CRITICAL, "AeroMC veri klasörü fazla izinli", "Diğer yerel kullanıcılar ayar ve güvenlik dosyalarına erişebilir.")); }
+        if (Files.isSymbolicLink(DATA)) { score -= 40; findings.add(new Finding(Level.CRITICAL, "AeroMC veri klasörü simgesel bağlantı", "Güvenlik kasaları bu klasör altında açılmamalı; gerçek, kullanıcıya özel bir klasör kullan.")); }
+        else if (Files.exists(DATA) && !privatePermissions(DATA, true)) { score -= 25; findings.add(new Finding(Level.CRITICAL, "AeroMC veri klasörü fazla izinli", "Diğer yerel kullanıcılar ayar ve güvenlik dosyalarına erişebilir.")); }
         else findings.add(new Finding(Level.PASS, "Yerel veri klasörü", "Klasör izinleri kullanıcıyla sınırlandırılmış veya platform POSIX izinlerini kullanmıyor."));
         for (String name : SENSITIVE) {
             Path file = DATA.resolve(name); if (!Files.exists(file)) continue;
@@ -35,11 +36,13 @@ public final class SecurityAuditEngine {
         if (jar != null) try { SafePathGuard.serverJar(jar); findings.add(new Finding(Level.PASS, "Sunucu JAR yolu", "Gerçek dosya doğrulandı; simgesel bağlantı kullanılmıyor.")); }
         catch (IOException error) { score -= 20; findings.add(new Finding(Level.CRITICAL, "Sunucu JAR yolu güvensiz", error.getMessage())); }
         if (Files.exists(DATA.resolve("remote-users.properties"))) { score -= 4; findings.add(new Finding(Level.WARNING, "Uzaktan erişim kullanıcıları mevcut", "HTTPS/TLS ağ trafiğini şifreler; yine de yalnızca güvenilen yerel ağda aç, sertifika parmak izini doğrula ve güçlü parola kullan.")); }
+        findings.add(new Finding(Level.PASS, "AeroGuard V2.3 istek koruması", "Uzaktan erişimde sabit işçi havuzu, hız sınırı, sıkı form doğrulaması ve tek kullanımlık CSP nonce'ları etkin."));
         findings.add(new Finding(Level.WARNING, "Güncelleme yayın imzası", "SHA-256 bütünlük doğrulaması etkin; yayıncı kimliğini kanıtlayan sabitlenmiş Ed25519 anahtarı henüz yapılandırılmadı.")); score -= 7;
         return new Report(Math.max(0, score), List.copyOf(findings));
     }
 
     public static int hardenPermissions() throws IOException {
+        if (Files.exists(DATA, LinkOption.NOFOLLOW_LINKS) && Files.isSymbolicLink(DATA)) throw new IOException("AeroMC veri klasörü simgesel bağlantı olamaz.");
         Files.createDirectories(DATA); int changed = 0;
         changed += restrict(DATA, true) ? 1 : 0;
         for (String name : SENSITIVE) { Path file = DATA.resolve(name); if (Files.exists(file, LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(file)) changed += restrict(file, false) ? 1 : 0; }

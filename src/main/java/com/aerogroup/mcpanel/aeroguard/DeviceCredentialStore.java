@@ -28,7 +28,7 @@ public final class DeviceCredentialStore {
 
     private static final Path DIRECTORY = Path.of(System.getProperty("user.home"), ".aeromc-panel");
     private static final SecureRandom RANDOM = new SecureRandom();
-    private static final int ITERATIONS = 210_000;
+    private static final int ITERATIONS = 600_000;
     private static final int MIN_ITERATIONS = 100_000;
     private static final int MAX_ITERATIONS = 1_000_000;
     private static final long MAX_VAULT_BYTES = 64 * 1024;
@@ -62,7 +62,8 @@ public final class DeviceCredentialStore {
             properties.setProperty("salt", Base64.getEncoder().encodeToString(salt));
             properties.setProperty("iv", Base64.getEncoder().encodeToString(iv));
             properties.setProperty("data", Base64.getEncoder().encodeToString(encrypted));
-            Files.createDirectories(file.getParent());
+            if (Files.exists(file.getParent(), LinkOption.NOFOLLOW_LINKS)) requireSafeDirectory(file.getParent());
+            else Files.createDirectories(file.getParent());
             requireSafeDirectory(file.getParent());
             if (Files.isSymbolicLink(file)) throw new IOException("Kimlik kasası simgesel bağlantı olamaz.");
             restrictDirectory(file.getParent());
@@ -111,9 +112,9 @@ public final class DeviceCredentialStore {
     private static Path file(Kind kind) { return DIRECTORY.resolve(Objects.requireNonNull(kind).fileName); }
     private static SecretKey derive(String fingerprint, String purpose, byte[] salt, int iterations) throws Exception {
         char[] input = (Objects.requireNonNull(fingerprint) + "\u0000AeroMC\u0000" + purpose).toCharArray();
-        PBEKeySpec spec = new PBEKeySpec(input, salt, iterations, 256);
-        try { return new SecretKeySpec(SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).getEncoded(), "AES"); }
-        finally { Arrays.fill(input, '\0'); spec.clearPassword(); }
+        PBEKeySpec spec = new PBEKeySpec(input, salt, iterations, 256); byte[] encoded = null;
+        try { encoded = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).getEncoded(); return new SecretKeySpec(encoded, "AES"); }
+        finally { Arrays.fill(input, '\0'); spec.clearPassword(); if (encoded != null) Arrays.fill(encoded, (byte) 0); }
     }
     private static byte[] aad(String purpose) { return ("AeroMC/device-vault/v1/" + purpose).getBytes(StandardCharsets.UTF_8); }
     private static byte[] random(int size) { byte[] value = new byte[size]; RANDOM.nextBytes(value); return value; }

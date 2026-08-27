@@ -41,6 +41,7 @@ public final class PlayerMapPane {
     private TableView<PlayerPoint> table;
     private double centerX, centerZ, zoom = .12, dragX, dragY, startCenterX, startCenterZ;
     private String selectedPlayer;
+    private boolean viewBuilt, active, drawQueued;
     private final Consumer<String> remoteConsoleListener = this::onRemoteConsole;
     private final Consumer<ExarotonPane.ProSnapshot> remoteSnapshotListener = this::onRemoteSnapshot;
     private final Consumer<String> pterodactylConsoleListener = this::onPterodactylConsole;
@@ -59,22 +60,30 @@ public final class PlayerMapPane {
     }
 
     public Node buildView() {
-        provider.getSelectionModel().selectFirst(); provider.setOnAction(event -> { updateConnection(); points.clear(); rows.clear(); selectedPlayer = null; draw(); });
-        dimension.getSelectionModel().selectFirst(); dimension.setOnAction(event -> { if (autoCenter.isSelected()) fitPlayers(); draw(); });
-        autoCenter.setSelected(true); trails.setSelected(true); autoCenter.setOnAction(event -> { if (autoCenter.isSelected()) fitPlayers(); draw(); }); trails.setOnAction(event -> draw());
+        viewBuilt = true;
+        provider.getSelectionModel().selectFirst(); provider.setOnAction(event -> { updateConnection(); points.clear(); rows.clear(); selectedPlayer = null; requestDraw(); });
+        dimension.getSelectionModel().selectFirst(); dimension.setOnAction(event -> { if (autoCenter.isSelected()) fitPlayers(); requestDraw(); });
+        autoCenter.setSelected(true); trails.setSelected(true); autoCenter.setOnAction(event -> { if (autoCenter.isSelected()) fitPlayers(); requestDraw(); }); trails.setOnAction(event -> requestDraw());
         Button refresh = button("Şimdi Yenile", "primary"), center = button("Haritayı Ortala", "secondary"), selected = button("Seçili Oyuncuya Git", "secondary"), zoomIn = button("＋", "secondary"), zoomOut = button("−", "secondary"), resetZoom = button("Yakınlığı Sıfırla", "secondary");
-        refresh.setOnAction(event -> requestPositions()); center.setOnAction(event -> { autoCenter.setSelected(true); fitPlayers(); draw(); }); selected.setOnAction(event -> centerSelected());
-        zoomIn.setOnAction(event -> zoomAt(canvas.getWidth() / 2, canvas.getHeight() / 2, 1.5)); zoomOut.setOnAction(event -> zoomAt(canvas.getWidth() / 2, canvas.getHeight() / 2, 1 / 1.5)); resetZoom.setOnAction(event -> { autoCenter.setSelected(false); zoom = .12; draw(); });
+        refresh.setOnAction(event -> requestPositions()); center.setOnAction(event -> { autoCenter.setSelected(true); fitPlayers(); requestDraw(); }); selected.setOnAction(event -> centerSelected());
+        zoomIn.setOnAction(event -> zoomAt(canvas.getWidth() / 2, canvas.getHeight() / 2, 1.5)); zoomOut.setOnAction(event -> zoomAt(canvas.getWidth() / 2, canvas.getHeight() / 2, 1 / 1.5)); resetZoom.setOnAction(event -> { autoCenter.setSelected(false); zoom = .12; requestDraw(); });
         connection.getStyleClass().add("metric-small"); scaleLabel.getStyleClass().add("muted"); Region spacer = new Region(); HBox.setHgrow(spacer, Priority.ALWAYS);
         HBox controls = new HBox(8, new Label("Sağlayıcı"), provider, connection, new Label("Boyut"), dimension, spacer, refresh, center, selected); controls.setAlignment(Pos.CENTER_LEFT);
         HBox options = new HBox(10, autoCenter, trails, zoomOut, zoomIn, resetZoom, scaleLabel, new Label("Fare: sürükle = kaydır, tekerlek = yakınlaştır, noktaya tıkla = seç")); options.setAlignment(Pos.CENTER_LEFT);
 
-        StackPane map = new StackPane(canvas); map.getStyleClass().add("map-surface"); canvas.widthProperty().bind(map.widthProperty()); canvas.heightProperty().bind(map.heightProperty()); canvas.widthProperty().addListener((obs, oldValue, newValue) -> draw()); canvas.heightProperty().addListener((obs, oldValue, newValue) -> draw()); installMouseControls();
-        table = new TableView<>(rows); table.getColumns().add(column("Oyuncu", point -> point.name)); table.getColumns().add(column("X", point -> format(point.x))); table.getColumns().add(column("Y", point -> format(point.y))); table.getColumns().add(column("Z", point -> format(point.z))); table.getColumns().add(column("Son Veri", point -> point.lastSeen.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm:ss")))); table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN); table.setPrefWidth(330); table.getSelectionModel().selectedItemProperty().addListener((obs, oldPoint, newPoint) -> { if (newPoint != null) { selectedPlayer = newPoint.name; draw(); } });
+        StackPane map = new StackPane(canvas); map.getStyleClass().add("map-surface"); canvas.widthProperty().bind(map.widthProperty()); canvas.heightProperty().bind(map.heightProperty()); canvas.widthProperty().addListener((obs, oldValue, newValue) -> requestDraw()); canvas.heightProperty().addListener((obs, oldValue, newValue) -> requestDraw()); installMouseControls();
+        table = new TableView<>(rows); table.getColumns().add(column("Oyuncu", point -> point.name)); table.getColumns().add(column("X", point -> format(point.x))); table.getColumns().add(column("Y", point -> format(point.y))); table.getColumns().add(column("Z", point -> format(point.z))); table.getColumns().add(column("Son Veri", point -> point.lastSeen.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm:ss")))); table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN); table.setPrefWidth(330); table.getSelectionModel().selectedItemProperty().addListener((obs, oldPoint, newPoint) -> { if (newPoint != null) { selectedPlayer = newPoint.name; requestDraw(); } });
         VBox mapCard = card("CANLI OYUNCU HARİTASI", map); HBox.setHgrow(mapCard, Priority.ALWAYS); VBox.setVgrow(map, Priority.ALWAYS);
         VBox listCard = card("HARİTADAKİ OYUNCULAR", table); listCard.setPrefWidth(350); VBox.setVgrow(table, Priority.ALWAYS);
         HBox body = new HBox(14, mapCard, listCard); HBox.setHgrow(mapCard, Priority.ALWAYS); VBox page = new VBox(12, controls, options, body); page.setPadding(new Insets(18)); VBox.setVgrow(body, Priority.ALWAYS);
-        updateConnection(); poll.play(); draw(); return page;
+        updateConnection(); return page;
+    }
+
+    public void setActive(boolean value) {
+        active = value;
+        if (!viewBuilt) return;
+        if (active) { refreshRows(); if (autoCenter.isSelected()) fitPlayers(); requestPositions(); poll.play(); requestDraw(); }
+        else poll.stop();
     }
 
     public void onLocalConsole(String line) { if (isLocal()) parseLine(line); }
@@ -89,11 +98,11 @@ public final class PlayerMapPane {
     }
     static ParsedLocation parseConsoleLine(String line) { Matcher position = POSITION.matcher(line); if (position.find()) return new ParsedLocation(position.group(1), Double.parseDouble(position.group(2)), Double.parseDouble(position.group(3)), Double.parseDouble(position.group(4)), null); Matcher world = DIMENSION.matcher(line); return world.find() ? new ParsedLocation(world.group(1), 0, 0, 0, world.group(2)) : null; }
     private void updatePosition(String name, double x, double y, double z) {
-        PlayerPoint point = points.computeIfAbsent(name, PlayerPoint::new); point.x = x; point.y = y; point.z = z; point.lastSeen = Instant.now(); point.history.addLast(new MapPosition(x, z)); while (point.history.size() > 40) point.history.removeFirst(); refreshRows(); if (autoCenter.isSelected()) fitPlayers(); draw();
+        PlayerPoint point = points.computeIfAbsent(name, PlayerPoint::new); point.x = x; point.y = y; point.z = z; point.lastSeen = Instant.now(); point.history.addLast(new MapPosition(x, z)); while (point.history.size() > 40) point.history.removeFirst(); refreshRows(); if (autoCenter.isSelected()) fitPlayers(); requestDraw();
     }
-    private void updateDimension(String name, String value) { PlayerPoint point = points.computeIfAbsent(name, PlayerPoint::new); point.dimension = value; point.lastSeen = Instant.now(); refreshRows(); if (autoCenter.isSelected()) fitPlayers(); draw(); }
-    private void retainPlayers(Collection<String> names) { Set<String> active = new HashSet<>(names); points.entrySet().removeIf(entry -> !active.contains(entry.getKey()) && java.time.Duration.between(entry.getValue().lastSeen, Instant.now()).toSeconds() > 20); refreshRows(); draw(); }
-    private void refreshRows() { String world = dimension.getValue(); rows.setAll(points.values().stream().filter(point -> world.equals(point.dimension)).toList()); if (table != null) table.refresh(); }
+    private void updateDimension(String name, String value) { PlayerPoint point = points.computeIfAbsent(name, PlayerPoint::new); point.dimension = value; point.lastSeen = Instant.now(); refreshRows(); if (autoCenter.isSelected()) fitPlayers(); requestDraw(); }
+    private void retainPlayers(Collection<String> names) { Set<String> activeNames = new HashSet<>(names); points.entrySet().removeIf(entry -> !activeNames.contains(entry.getKey()) && java.time.Duration.between(entry.getValue().lastSeen, Instant.now()).toSeconds() > 20); refreshRows(); requestDraw(); }
+    private void refreshRows() { if (!active) return; String world = dimension.getValue(); rows.setAll(points.values().stream().filter(point -> world.equals(point.dimension)).toList()); if (table != null) table.refresh(); }
 
     private void requestPositions() {
         updateConnection(); String pos = "execute as @a run data get entity @s Pos", dim = "execute as @a run data get entity @s Dimension";
@@ -116,7 +125,7 @@ public final class PlayerMapPane {
     private boolean isPterodactyl() { return "Pterodactyl".equals(provider.getValue()); }
     private void expireAndDraw() {
         ParsedLocation parsed; boolean changed = false; while ((parsed = pendingLocations.poll()) != null) { PlayerPoint point = points.computeIfAbsent(parsed.name, PlayerPoint::new); point.lastSeen = Instant.now(); if (parsed.dimension != null) point.dimension = parsed.dimension; else { point.x = parsed.x; point.y = parsed.y; point.z = parsed.z; point.history.addLast(new MapPosition(parsed.x, parsed.z)); while (point.history.size() > 40) point.history.removeFirst(); } changed = true; }
-        Instant cutoff = Instant.now().minusSeconds(30); changed |= points.entrySet().removeIf(entry -> entry.getValue().lastSeen.isBefore(cutoff)); if (changed) { refreshRows(); if (autoCenter.isSelected()) fitPlayers(); } draw();
+        Instant cutoff = Instant.now().minusSeconds(30); changed |= points.entrySet().removeIf(entry -> entry.getValue().lastSeen.isBefore(cutoff)); if (changed) { refreshRows(); if (autoCenter.isSelected()) fitPlayers(); requestDraw(); }
     }
 
     private void fitPlayers() {
@@ -124,7 +133,7 @@ public final class PlayerMapPane {
         double minX = visible.stream().mapToDouble(point -> point.x).min().orElse(0), maxX = visible.stream().mapToDouble(point -> point.x).max().orElse(0), minZ = visible.stream().mapToDouble(point -> point.z).min().orElse(0), maxZ = visible.stream().mapToDouble(point -> point.z).max().orElse(0); centerX = (minX + maxX) / 2; centerZ = (minZ + maxZ) / 2;
         if (visible.size() > 1 && canvas.getWidth() > 100 && canvas.getHeight() > 100) { double width = Math.max(100, maxX - minX), height = Math.max(100, maxZ - minZ); zoom = clamp(Math.min((canvas.getWidth() - 100) / width, (canvas.getHeight() - 100) / height), .01, 4); }
     }
-    private void centerSelected() { PlayerPoint point = selectedPlayer == null ? null : points.get(selectedPlayer); if (point != null) { autoCenter.setSelected(false); dimension.getSelectionModel().select(point.dimension); centerX = point.x; centerZ = point.z; zoom = Math.max(zoom, .5); draw(); } }
+    private void centerSelected() { PlayerPoint point = selectedPlayer == null ? null : points.get(selectedPlayer); if (point != null) { autoCenter.setSelected(false); dimension.getSelectionModel().select(point.dimension); centerX = point.x; centerZ = point.z; zoom = Math.max(zoom, .5); requestDraw(); } }
     private List<PlayerPoint> visiblePoints() { String world = dimension.getValue(); return points.values().stream().filter(point -> world.equals(point.dimension)).toList(); }
 
     private void draw() {
@@ -136,6 +145,11 @@ public final class PlayerMapPane {
         if (visiblePoints().isEmpty()) { g.setFill(Color.web("#78909f")); g.fillText(LanguageManager.text("Bu boyutta henüz canlı oyuncu konumu alınmadı."), 24, 38); }
         drawCrosshair(g, width, height);
         scaleLabel.setText(String.format(Locale.US, "Ölçek: %.3f px/blok • Nişan X: %.0f Z: %.0f", zoom, centerX, centerZ));
+    }
+    private void requestDraw() {
+        if (!viewBuilt || !active || drawQueued) return;
+        drawQueued = true;
+        Platform.runLater(() -> { drawQueued = false; if (active) draw(); });
     }
     private void drawCrosshair(GraphicsContext g, double width, double height) {
         double x = width / 2, y = height / 2; g.setLineWidth(3); g.setStroke(Color.color(0, 0, 0, .75)); g.strokeLine(x - 15, y, x + 15, y); g.strokeLine(x, y - 15, x, y + 15); g.strokeOval(x - 6, y - 6, 12, 12);
@@ -149,11 +163,11 @@ public final class PlayerMapPane {
     }
     private void installMouseControls() {
         canvas.setOnMousePressed(event -> { if (event.getButton() == MouseButton.PRIMARY) { dragX = event.getX(); dragY = event.getY(); startCenterX = centerX; startCenterZ = centerZ; } });
-        canvas.setOnMouseDragged(event -> { if (event.isPrimaryButtonDown()) { autoCenter.setSelected(false); centerX = startCenterX - (event.getX() - dragX) / zoom; centerZ = startCenterZ - (event.getY() - dragY) / zoom; draw(); } });
-        canvas.setOnMouseClicked(event -> { if (event.getButton() != MouseButton.PRIMARY || event.isStillSincePress() == false) return; PlayerPoint nearest = null; double distance = 18; for (PlayerPoint point : visiblePoints()) { double d = Math.hypot(event.getX() - sx(point.x, canvas.getWidth()), event.getY() - sz(point.z, canvas.getHeight())); if (d < distance) { nearest = point; distance = d; } } if (nearest != null) { selectedPlayer = nearest.name; table.getSelectionModel().select(nearest); draw(); } });
+        canvas.setOnMouseDragged(event -> { if (event.isPrimaryButtonDown()) { autoCenter.setSelected(false); centerX = startCenterX - (event.getX() - dragX) / zoom; centerZ = startCenterZ - (event.getY() - dragY) / zoom; requestDraw(); } });
+        canvas.setOnMouseClicked(event -> { if (event.getButton() != MouseButton.PRIMARY || event.isStillSincePress() == false) return; PlayerPoint nearest = null; double distance = 18; for (PlayerPoint point : visiblePoints()) { double d = Math.hypot(event.getX() - sx(point.x, canvas.getWidth()), event.getY() - sz(point.z, canvas.getHeight())); if (d < distance) { nearest = point; distance = d; } } if (nearest != null) { selectedPlayer = nearest.name; table.getSelectionModel().select(nearest); requestDraw(); } });
         canvas.setOnScroll(event -> { if (event.getDeltaY() != 0) zoomAt(event.getX(), event.getY(), event.getDeltaY() > 0 ? 1.45 : 1 / 1.45); event.consume(); });
     }
-    private void zoomAt(double screenX, double screenY, double factor) { autoCenter.setSelected(false); double oldZoom = zoom, worldX = centerX + (screenX - canvas.getWidth() / 2) / oldZoom, worldZ = centerZ + (screenY - canvas.getHeight() / 2) / oldZoom; zoom = clamp(oldZoom * factor, .005, 40); centerX = worldX - (screenX - canvas.getWidth() / 2) / zoom; centerZ = worldZ - (screenY - canvas.getHeight() / 2) / zoom; draw(); }
+    private void zoomAt(double screenX, double screenY, double factor) { autoCenter.setSelected(false); double oldZoom = zoom, worldX = centerX + (screenX - canvas.getWidth() / 2) / oldZoom, worldZ = centerZ + (screenY - canvas.getHeight() / 2) / oldZoom; zoom = clamp(oldZoom * factor, .005, 40); centerX = worldX - (screenX - canvas.getWidth() / 2) / zoom; centerZ = worldZ - (screenY - canvas.getHeight() / 2) / zoom; requestDraw(); }
     private double sx(double worldX, double width) { return (worldX - centerX) * zoom + width / 2; }
     private double sz(double worldZ, double height) { return (worldZ - centerZ) * zoom + height / 2; }
     private double clamp(double value, double min, double max) { return Math.max(min, Math.min(max, value)); }

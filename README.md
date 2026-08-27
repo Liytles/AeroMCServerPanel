@@ -1,9 +1,8 @@
 # AeroMC Server Panel
 
-DİKKAT:SÜRÜM KARALI DEĞİLDİR. YÜKLEMEK TAMAMEN SİZİN SORUMLULUĞUNUZ ALTINDADIR
 **Türkçe** · [English](README.en.md)
 
-> Pre-Release sürüm: **4.0.0** · [V4 yol haritası](V4-ROADMAP.md) · [4.0 sürüm notları](release-notes/v4.0.0.md)
+> Kararlı sürüm: **4.0.0** · AeroGuard **V2.3** · [V4 yol haritası](V4-ROADMAP.md) · [4.0 sürüm notları](release-notes/v4.0.0.md)
 
 Minecraft sunucularını dört sağlayıcı modunda yöneten JavaFX masaüstü paneli:
 

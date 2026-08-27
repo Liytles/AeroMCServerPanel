@@ -26,7 +26,6 @@ public final class UpdateService {
     private static final URI API = URI.create("https://api.github.com/repos/" + OWNER + "/" + REPOSITORY + "/releases");
     private static final long MAX_INSTALLER_BYTES = 750L * 1024 * 1024;
     private static final int MAX_RELEASE_BYTES = 2_000_000;
-    private static final Pattern CHECKSUM = Pattern.compile("(?i)(?<![a-f0-9])([a-f0-9]{64})(?![a-f0-9])");
     private static final Pattern SAFE_NAME = Pattern.compile("[A-Za-z0-9._-]{1,180}");
     private static final Pattern SAFE_TAG = Pattern.compile("[vV]?\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?");
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(12)).followRedirects(HttpClient.Redirect.NORMAL).build();
@@ -59,10 +58,11 @@ public final class UpdateService {
         if (installer.size() <= 0 || installer.size() > MAX_INSTALLER_BYTES) throw new IOException("Kurulum paketinin boyutu güvenli sınır dışında.");
         if (checksum.size() <= 0 || checksum.size() > 16_384) throw new IOException("SHA-256 doğrulama dosyasının boyutu geçersiz.");
         String expected = fetchChecksum(checksum, installer.name());
-        Path directory = Path.of(System.getProperty("user.home"), ".aeromc-panel", "updates").toAbsolutePath().normalize(); Files.createDirectories(directory);
+        Path directory = Path.of(System.getProperty("user.home"), ".aeromc-panel", "updates").toAbsolutePath().normalize(); prepareUpdateDirectory(directory);
         Path target = directory.resolve(installer.name()).normalize();
         if (!target.getParent().equals(directory.toAbsolutePath().normalize())) throw new IOException("Güvensiz güncelleme dosya adı.");
-        if (Files.isRegularFile(target) && expected.equalsIgnoreCase(sha256(target))) { if (progress != null) progress.accept(Files.size(target), Files.size(target)); return target; }
+        if (Files.isSymbolicLink(target)) throw new IOException("Güncelleme hedefi simgesel bağlantı olamaz.");
+        if (Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) && Files.size(target) == installer.size() && expected.equalsIgnoreCase(sha256(target))) { if (progress != null) progress.accept(Files.size(target), Files.size(target)); return target; }
         Path temporary = Files.createTempFile(directory, ".aeromc-update-", ".part");
         try {
             HttpResponse<InputStream> response = http.send(request(installer.url()).GET().build(), HttpResponse.BodyHandlers.ofInputStream());
@@ -89,7 +89,7 @@ public final class UpdateService {
         Objects.requireNonNull(release); Asset installer = release.installer(), checksum = release.checksum();
         if (installer == null || checksum == null || installerFile == null) throw new IOException("Doğrulanacak güncelleme paketi eksik.");
         validateAsset(installer); validateAsset(checksum);
-        if (!Files.isRegularFile(installerFile) || Files.size(installerFile) != installer.size()) throw new IOException("İndirilen güncelleme paketinin boyutu değişmiş.");
+        if (Files.isSymbolicLink(installerFile) || !Files.isRegularFile(installerFile, LinkOption.NOFOLLOW_LINKS) || Files.size(installerFile) != installer.size()) throw new IOException("İndirilen güncelleme paketi geçersiz veya boyutu değişmiş.");
         String expected = fetchChecksum(checksum, installer.name()), actual = sha256(installerFile);
         if (!expected.equalsIgnoreCase(actual)) throw new SecurityException("Güncelleme paketi açılmadan önceki SHA-256 doğrulamasını geçemedi.");
     }
@@ -127,8 +127,9 @@ public final class UpdateService {
     }
     static String expectedChecksum(String text, String installerName) throws IOException {
         if (text == null || text.length() > 16_384) throw new IOException("SHA-256 dosyası geçersiz.");
-        for (String line : text.lines().toList()) if (line.contains(installerName)) { Matcher matcher = CHECKSUM.matcher(line); if (matcher.find()) return matcher.group(1).toLowerCase(Locale.ROOT); }
-        Matcher matcher = CHECKSUM.matcher(text); if (matcher.find()) return matcher.group(1).toLowerCase(Locale.ROOT);
+        Pattern named = Pattern.compile("(?i)^([a-f0-9]{64})\\s+[ *]" + Pattern.quote(installerName) + "$");
+        for (String line : text.lines().map(String::strip).toList()) { Matcher matcher = named.matcher(line); if (matcher.matches()) return matcher.group(1).toLowerCase(Locale.ROOT); }
+        Matcher plain = Pattern.compile("(?i)^\\s*([a-f0-9]{64})\\s*$").matcher(text); if (plain.matches()) return plain.group(1).toLowerCase(Locale.ROOT);
         throw new IOException("SHA-256 değeri bulunamadı.");
     }
     static String sha256(Path file) throws Exception { MessageDigest digest = MessageDigest.getInstance("SHA-256"); try (InputStream input = Files.newInputStream(file)) { byte[] buffer = new byte[64 * 1024]; int count; while ((count = input.read(buffer)) >= 0) if (count > 0) digest.update(buffer, 0, count); } return HexFormat.of().formatHex(digest.digest()); }
@@ -141,6 +142,13 @@ public final class UpdateService {
     private static void validateUri(URI uri) throws IOException { if (uri == null || !"https".equalsIgnoreCase(uri.getScheme()) || !allowedHost(uri.getHost())) throw new IOException("Güncelleme yalnızca resmî GitHub HTTPS adresinden indirilebilir."); }
     private static void validateResponse(HttpResponse<?> response, URI requested) throws IOException { if (response.statusCode() / 100 != 2) throw new IOException("Güncelleme indirmesi HTTP " + response.statusCode() + " ile başarısız oldu."); validateUri(requested); validateUri(response.uri()); }
     private static boolean allowedHost(String host) { if (host == null) return false; String value = host.toLowerCase(Locale.ROOT); return value.equals("api.github.com") || value.equals("github.com") || value.equals("objects.githubusercontent.com") || value.endsWith(".githubusercontent.com"); }
+    private static void prepareUpdateDirectory(Path directory) throws IOException {
+        Path parent = directory.getParent();
+        if (parent != null && Files.exists(parent, LinkOption.NOFOLLOW_LINKS) && Files.isSymbolicLink(parent)) throw new IOException("AeroMC veri klasörü simgesel bağlantı olamaz.");
+        if (Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) { if (Files.isSymbolicLink(directory) || !Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) throw new IOException("Güncelleme klasörü geçersiz veya simgesel bağlantı."); }
+        else Files.createDirectories(directory);
+        try { Files.setPosixFilePermissions(directory, java.nio.file.attribute.PosixFilePermissions.fromString("rwx------")); } catch (UnsupportedOperationException ignored) { }
+    }
     private static String os() { String value = System.getProperty("os.name", "").toLowerCase(Locale.ROOT); return value.contains("win") ? "windows" : value.contains("mac") ? "macos" : value.contains("linux") ? "linux" : "other"; }
     private static String arch() { String value = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT); return value.contains("aarch64") || value.contains("arm64") ? "arm64" : "x64"; }
     private static String normalizeVersion(String value) { return value == null ? "" : value.trim().replaceFirst("^[vV]", ""); }

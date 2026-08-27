@@ -4,6 +4,7 @@ import com.aerogroup.mcpanel.aeroguard.CommandSecurity;
 import com.aerogroup.mcpanel.aeroguard.CrashLoopGuard;
 import com.aerogroup.mcpanel.aeroguard.SafePathGuard;
 import com.aerogroup.mcpanel.aeroguard.SecurityAuditEngine;
+import com.aerogroup.mcpanel.aeroguard.SecureTokenStore;
 
 import java.nio.file.*;
 import java.time.*;
@@ -20,7 +21,17 @@ public final class SecurityHardeningSmoke {
         denied(() -> CommandSecurity.requireRemoteGeneric("stop"), "remote critical command blocked");
         denied(() -> CommandSecurity.requireRemoteGeneric("gamerule keepInventory true"), "remote sensitive command blocked");
         denied(() -> CommandSecurity.assess("say hi\nstop"), "multiline command blocked");
+        denied(() -> CommandSecurity.assess("li\u202Est"), "bidirectional control blocked");
+        denied(() -> CommandSecurity.requireRemoteGeneric("unknownPluginCommand value"), "unknown remote command blocked");
+        require("list".equals(CommandSecurity.requireRemoteGeneric("list")), "read-only remote command allowed");
         denied(() -> CommandSecurity.playerName("@a"), "selector player blocked");
+
+        char[] vaultPassword = "strong-vault-password".toCharArray();
+        SecureTokenStore.save("secure-api-token", vaultPassword);
+        Path tokenFile = Path.of(System.getProperty("user.home"), ".aeromc-panel", "exaroton.token");
+        String vaultText = Files.readString(tokenFile, StandardCharsets.UTF_8);
+        require(vaultText.contains("version=2") && vaultText.contains("iterations=600000") && !vaultText.contains("secure-api-token"), "AeroGuard V2.3 manual vault format");
+        require("secure-api-token".equals(SecureTokenStore.load(vaultPassword)), "manual vault roundtrip");
 
         Path root = Files.createTempDirectory("aeromc-safe-root"), inside = Files.writeString(root.resolve("server.jar"), "jar"), outside = Files.createTempFile("aeromc-outside", ".txt");
         require(SafePathGuard.serverJar(inside).equals(inside.toRealPath()), "real server jar accepted");

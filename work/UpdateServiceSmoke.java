@@ -22,6 +22,8 @@ public final class UpdateServiceSmoke {
         require(UpdateService.compareVersions("3.2.0-beta.10", "3.2.0-beta.2") > 0, "numeric prerelease ordering");
         String hash = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
         require(hash.equals(UpdateService.expectedChecksum(hash + "  AeroMC-3.2.1.exe", "AeroMC-3.2.1.exe")), "checksum parsed");
+        boolean unrelatedHashRejected = false; try { UpdateService.expectedChecksum(hash + "  other.exe", "AeroMC-3.2.1.exe"); } catch (java.io.IOException expected) { unrelatedHashRejected = true; }
+        require(unrelatedHashRejected, "checksum for unrelated asset rejected");
         Path file = Files.createTempFile("aeromc-update-hash-", ".bin"); Files.writeString(file, "abc");
         require(hash.equals(UpdateService.sha256(file)), "SHA-256 calculated");
         require(UpdateService.selectInstaller(java.util.List.of(release.installer()), "other", "x64") == null, "unsupported OS rejected");

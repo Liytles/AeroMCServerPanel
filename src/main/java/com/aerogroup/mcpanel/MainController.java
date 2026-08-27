@@ -10,6 +10,8 @@ import javafx.collections.*;
 import javafx.concurrent.Task;
 import javafx.geometry.*;
 import javafx.scene.Cursor;
+import javafx.scene.Node;
+import javafx.scene.Parent;
 import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
@@ -19,6 +21,7 @@ import javafx.util.Duration;
 import java.io.*;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.function.Supplier;
 
 /** JavaFX arayüzünü sunucu yönetim katmanına bağlar. */
 public final class MainController {
@@ -46,9 +49,11 @@ public final class MainController {
     private final Timeline playerRefresh;
     private final Timeline scheduledBackup = new Timeline();
     private final Set<String> knownPlayers = new HashSet<>();
+    private final List<LazyTabContent> lazyContents = new ArrayList<>();
     private BorderPane root;
     private TabPane mainTabs;
     private Tab nextGenTab, liveMapTab, serversTab, exarotonProviderTab;
+    private boolean windowActive = true;
 
     public MainController(HostServices hostServices) {
         exarotonPane = new ExarotonPane(config);
@@ -66,6 +71,10 @@ public final class MainController {
         settingsPane = new SettingsPane(config, this::setLiveMapEnabled, this::setAutomaticCredentialVaultEnabled, this::showFeatureTour, hostServices);
         playerRefresh = new Timeline(new KeyFrame(Duration.seconds(15), event -> manager.requestPlayers()));
         playerRefresh.setCycleCount(Animation.INDEFINITE);
+        LanguageManager.englishProperty().addListener((observable, oldValue, english) -> Platform.runLater(() -> {
+            String language = english ? "en" : "tr";
+            for (LazyTabContent content : lazyContents) if (content.node instanceof Parent parent) LanguageManager.apply(parent, language);
+        }));
     }
     public BorderPane buildView() {
         root = new BorderPane(); root.getStyleClass().add("app-root");
@@ -75,22 +84,49 @@ public final class MainController {
         return root;
     }
     private TabPane providerTabs() {
-        Tab dashboard = new Tab("Ana Panel", dashboardPane.buildView());
-        Tab local = new Tab("Yerel JAR", content()); local.setClosable(false);
-        exarotonProviderTab = new Tab("Exaroton", exarotonPane.buildView()); exarotonProviderTab.setClosable(false);
-        Tab aternos = new Tab("Aternos", aternosPane.buildView()); aternos.setClosable(false);
-        Tab pterodactyl = new Tab("Pterodactyl", pterodactylPane.buildView()); pterodactyl.setClosable(false);
-        TabPane serverProviders = new TabPane(local, exarotonProviderTab, aternos, pterodactyl); serverProviders.getStyleClass().add("server-provider-tabs");
-        serversTab = new Tab("Sunucular", serverProviders);
-        Tab management = new Tab("Yönetim", managementPane.buildView());
-        Tab proTools = new Tab("Kontrol Merkezi", proToolsPane.buildView());
-        nextGenTab = new Tab("Araçlar", nextGenPane.buildView());
-        Tab settings = new Tab("Ayarlar", settingsPane.buildView());
-        if (playerMapPane != null) liveMapTab = new Tab("Canlı Harita", playerMapPane.buildView());
-        dashboard.setClosable(false); serversTab.setClosable(false); management.setClosable(false); proTools.setClosable(false); nextGenTab.setClosable(false); settings.setClosable(false);
-        mainTabs = new TabPane(); mainTabs.getTabs().addAll(dashboard, serversTab, management, proTools); if (liveMapTab != null) { liveMapTab.setClosable(false); mainTabs.getTabs().add(liveMapTab); } mainTabs.getTabs().addAll(nextGenTab, settings);
-        mainTabs.getSelectionModel().selectedItemProperty().addListener((observable, oldTab, newTab) -> { if (newTab == management) managementPane.updateProviderStatus(); });
+        Tab dashboard = lazyTab("Ana Panel", dashboardPane::buildView);
+        serversTab = lazyTab("Sunucular", this::serverProviderTabs);
+        Tab management = lazyTab("Yönetim", managementPane::buildView);
+        Tab proTools = lazyTab("Kontrol Merkezi", proToolsPane::buildView);
+        nextGenTab = lazyTab("Araçlar", nextGenPane::buildView);
+        Tab settings = lazyTab("Ayarlar", settingsPane::buildView);
+        if (playerMapPane != null) liveMapTab = lazyTab("Canlı Harita", playerMapPane::buildView);
+        mainTabs = new TabPane(); mainTabs.getTabs().addAll(dashboard, serversTab, management, proTools); if (liveMapTab != null) mainTabs.getTabs().add(liveMapTab); mainTabs.getTabs().addAll(nextGenTab, settings);
+        mainTabs.getSelectionModel().selectedItemProperty().addListener((observable, oldTab, newTab) -> { if (newTab == management) managementPane.updateProviderStatus(); updateVisualActivity(); });
+        ensureTabContent(dashboard);
         mainTabs.getStyleClass().add("provider-tabs"); return mainTabs;
+    }
+    private TabPane serverProviderTabs() {
+        Tab local = lazyTab("Yerel JAR", this::content);
+        exarotonProviderTab = lazyTab("Exaroton", exarotonPane::buildView);
+        Tab aternos = lazyTab("Aternos", aternosPane::buildView);
+        Tab pterodactyl = lazyTab("Pterodactyl", pterodactylPane::buildView);
+        TabPane providers = new TabPane(local, exarotonProviderTab, aternos, pterodactyl); providers.getStyleClass().add("server-provider-tabs");
+        providers.getSelectionModel().selectedItemProperty().addListener((observable, oldTab, newTab) -> updateVisualActivity());
+        ensureTabContent(local);
+        return providers;
+    }
+    private Tab lazyTab(String title, Supplier<Node> factory) {
+        LazyTabContent content = new LazyTabContent(factory); lazyContents.add(content);
+        Tab tab = new Tab(title); tab.setClosable(false); tab.setUserData(content);
+        tab.selectedProperty().addListener((observable, oldValue, selected) -> {
+            if (selected) ensureTabContent(tab);
+            else if (tab.getContent() == content.node) tab.setContent(null);
+        });
+        return tab;
+    }
+    private void ensureTabContent(Tab tab) {
+        if (tab == null || !(tab.getUserData() instanceof LazyTabContent content)) return;
+        if (content.node == null) {
+            content.node = Objects.requireNonNull(content.factory.get(), "Sekme içeriği oluşturulamadı: " + tab.getText());
+            if ("en".equals(LanguageManager.load()) && content.node instanceof Parent parent) LanguageManager.apply(parent, "en");
+        }
+        if (tab.getContent() != content.node) tab.setContent(content.node);
+    }
+    public void setWindowActive(boolean active) { windowActive = active; updateVisualActivity(); }
+    private void updateVisualActivity() {
+        boolean mapVisible = windowActive && mainTabs != null && liveMapTab != null && mainTabs.getSelectionModel().getSelectedItem() == liveMapTab;
+        if (playerMapPane != null) playerMapPane.setActive(mapVisible);
     }
     private HBox header() {
         Label logo = new Label("AEROMC"); logo.getStyleClass().add("logo");
@@ -99,7 +135,7 @@ public final class MainController {
         ImageView guardIcon = new ImageView(new Image(Objects.requireNonNull(MainController.class.getResourceAsStream("/icons/aeroguard-v2.png")), 25, 25, true, true));
         guardIcon.getStyleClass().add("aeroguard-icon");
         Label guardStatus = new Label();
-        guardStatus.textProperty().bind(javafx.beans.binding.Bindings.createStringBinding(() -> LanguageManager.text("AeroGuard V2.2 Aktif"), LanguageManager.englishProperty()));
+        guardStatus.textProperty().bind(javafx.beans.binding.Bindings.createStringBinding(() -> LanguageManager.text("AeroGuard V2.3 Aktif"), LanguageManager.englishProperty()));
         guardStatus.getStyleClass().add("aeroguard-status");
         HBox guardBadge = new HBox(7, guardIcon, guardStatus); guardBadge.setAlignment(Pos.CENTER_LEFT); guardBadge.getStyleClass().add("aeroguard-badge");
         guardBadge.setCursor(Cursor.HAND); guardBadge.setFocusTraversable(true);
@@ -111,13 +147,13 @@ public final class MainController {
     }
     private void showAeroGuardInfo() {
         Alert info = new Alert(Alert.AlertType.INFORMATION);
-        info.setTitle(LanguageManager.text("AeroGuard V2.2"));
+        info.setTitle(LanguageManager.text("AeroGuard V2.3"));
         info.setHeaderText(LanguageManager.text("AeroMC'nin etkin güvenlik katmanı"));
         Label description = new Label(LanguageManager.text("AeroGuard; sunucu dosyalarını, API anahtarlarını, uzaktan erişimi ve kritik yönetim işlemlerini tek güvenlik katmanında korur."));
         description.setWrapText(true);
-        Label protections = new Label(LanguageManager.text("• SafePathGuard ile klasör dışına ve simgesel bağlantılara kaçışı engeller.\n• Kritik konsol komutlarında kullanıcı onayı ister.\n• Gizli bilgileri AES-256-GCM kasasında saklar ve kopyalamayı engeller.\n• Uzaktan erişimi TLS ile şifreler ve sertifika parmak izi sunar.\n• Dosya izinlerini, veri sınırlarını ve çökme döngülerini denetler."));
+        Label protections = new Label(LanguageManager.text("• SafePathGuard ile klasör dışına ve simgesel bağlantılara kaçışı engeller.\n• Kritik konsol komutlarında kullanıcı onayı ve uzaktan salt okunur komut listesi uygular.\n• Gizli bilgileri AES-256-GCM kasasında, 600.000 turlu anahtar türetmeyle saklar.\n• Uzaktan erişimi TLS ile şifreler; hız sınırı, sıkı istek doğrulaması ve tek kullanımlık CSP nonce'ları uygular.\n• Dosya izinlerini, veri sınırlarını, güncelleme sağlama toplamlarını ve çökme döngülerini denetler."));
         protections.setWrapText(true);
-        Label state = new Label(LanguageManager.text("Durum: AeroGuard V2.2 etkin ve korumalar çalışıyor."));
+        Label state = new Label(LanguageManager.text("Durum: AeroGuard V2.3 etkin ve korumalar çalışıyor."));
         state.getStyleClass().add("aeroguard-dialog-state");
         VBox content = new VBox(12, description, protections, state); content.setPrefWidth(560);
         info.getDialogPane().setContent(content); info.showAndWait();
@@ -177,9 +213,9 @@ public final class MainController {
     private void useInstalledJar(Path jar, Integer ram) { jarPath.setText(jar.toAbsolutePath().toString()); manager.configure(jar); config.setServerJar(jar); config.setMemoryMb(ram); memory.getValueFactory().setValue(ram); try { config.save(); } catch (IOException ignored) { } }
     private void setLiveMapEnabled(Boolean enabled) {
         if (enabled && playerMapPane == null) {
-            playerMapPane = new PlayerMapPane(manager, exarotonPane, pterodactylPane); liveMapTab = new Tab(LanguageManager.text("Canlı Harita"), playerMapPane.buildView()); liveMapTab.setClosable(false);
+            playerMapPane = new PlayerMapPane(manager, exarotonPane, pterodactylPane); liveMapTab = lazyTab(LanguageManager.text("Canlı Harita"), playerMapPane::buildView);
             int index = nextGenTab == null ? mainTabs.getTabs().size() : mainTabs.getTabs().indexOf(nextGenTab); mainTabs.getTabs().add(Math.max(0, index), liveMapTab);
-            if ("en".equals(LanguageManager.load()) && liveMapTab.getContent() instanceof javafx.scene.Parent parent) LanguageManager.apply(parent, "en");
+            updateVisualActivity();
         } else if (!enabled && playerMapPane != null) {
             if (mainTabs != null && liveMapTab != null) mainTabs.getTabs().remove(liveMapTab); playerMapPane.shutdown(); playerMapPane = null; liveMapTab = null;
         }
@@ -199,7 +235,8 @@ public final class MainController {
         });
     }
     private void openExarotonAutomation() {
-        if (mainTabs == null || serversTab == null || exarotonProviderTab == null) return; mainTabs.getSelectionModel().select(serversTab);
+        if (mainTabs == null || serversTab == null) return; mainTabs.getSelectionModel().select(serversTab);
+        ensureTabContent(serversTab); if (exarotonProviderTab == null) return;
         if (serversTab.getContent() instanceof TabPane providers) providers.getSelectionModel().select(exarotonProviderTab); exarotonPane.openAutomationTab();
     }
     private void startServer() {
@@ -262,4 +299,9 @@ public final class MainController {
     }
     private void alert(String title, String message) { Alert alert = new Alert(Alert.AlertType.ERROR, LanguageManager.text(message == null ? "Bilinmeyen hata" : message), ButtonType.OK); alert.setTitle(LanguageManager.text(title)); alert.setHeaderText(LanguageManager.text(title)); alert.showAndWait(); }
     public void shutdown() { playerRefresh.stop(); scheduledBackup.stop(); nextGenPane.shutdown(); if (playerMapPane != null) playerMapPane.shutdown(); if (proToolsPane != null) proToolsPane.shutdown(); manager.shutdown(); exarotonPane.shutdown(); aternosPane.shutdown(); pterodactylPane.shutdown(); dashboardPane.shutdown(); }
+    private static final class LazyTabContent {
+        private final Supplier<Node> factory;
+        private Node node;
+        private LazyTabContent(Supplier<Node> factory) { this.factory = Objects.requireNonNull(factory); }
+    }
 }

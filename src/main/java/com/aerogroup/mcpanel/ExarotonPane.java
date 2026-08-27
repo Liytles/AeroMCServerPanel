@@ -227,11 +227,11 @@ public final class ExarotonPane {
         finally { Arrays.fill(password, '\0'); }
     }
     private Optional<char[]> passwordDialog(String title, boolean confirm) {
-        Dialog<char[]> dialog = new Dialog<>(); dialog.setTitle(LanguageManager.text(title)); dialog.setHeaderText(LanguageManager.text(confirm ? "En az 8 karakterlik bir ana parola belirle. Bu parola kaydedilmez." : "Şifreli API anahtarını açmak için ana parolanı gir."));
+        Dialog<char[]> dialog = new Dialog<>(); dialog.setTitle(LanguageManager.text(title)); dialog.setHeaderText(LanguageManager.text(confirm ? "En az 12 karakterlik bir ana parola belirle. Bu parola kaydedilmez." : "Şifreli API anahtarını açmak için ana parolanı gir."));
         PasswordField first = new PasswordField(); first.setPromptText(LanguageManager.text("Ana parola")); VBox fields = new VBox(8, first);
         SecretFieldGuard.protect(first); PasswordField second = new PasswordField(); SecretFieldGuard.protect(second); if (confirm) { second.setPromptText(LanguageManager.text("Ana parolayı tekrar yaz")); fields.getChildren().add(second); }
         dialog.getDialogPane().setContent(fields); dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
-        dialog.setResultConverter(button -> { if (button != ButtonType.OK) return null; if (first.getText().length() < 8) { showError("Ana parola en az 8 karakter olmalı."); return null; } if (confirm && !first.getText().equals(second.getText())) { showError("Ana parolalar eşleşmiyor."); return null; } return first.getText().toCharArray(); });
+        dialog.setResultConverter(button -> { if (button != ButtonType.OK) return null; if (first.getText().length() < (confirm ? 12 : 8)) { showError(confirm ? "Ana parola en az 12 karakter olmalı." : "Ana parola geçersiz."); return null; } if (confirm && !first.getText().equals(second.getText())) { showError("Ana parolalar eşleşmiyor."); return null; } return first.getText().toCharArray(); });
         return dialog.showAndWait();
     }
     private void selectServer(ServerChoice choice) {
