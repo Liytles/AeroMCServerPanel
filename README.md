@@ -2,7 +2,7 @@
 
 **Türkçe** · [English](README.en.md)
 
-> Kararlı sürüm: **4.0.0** · AeroGuard **V2.3** · [V4 yol haritası](V4-ROADMAP.md) · [4.0 sürüm notları](release-notes/v4.0.0.md)
+> Kararlı sürüm: **4.0.0** · Güncel ön sürüm: **4.1.0-beta** · [4.1 beta sürüm notları](release-notes/v4.1.0-beta.md) · [V4 yol haritası](V4-ROADMAP.md)
 
 Minecraft sunucularını dört sağlayıcı modunda yöneten JavaFX masaüstü paneli:
 
@@ -54,6 +54,7 @@ Uzaktan erişim varsayılan olarak yalnızca `127.0.0.1` üzerinde açılır ve 
 - Yerel sunucular için 15/30/60 dakikalık planlı yedek
 - Hata, uyarı, oyuncu ve panel satırlarını ayıran renkli konsol
 - Tüm oyunculara hızlı mesaj gönderme
+- Eklenti gerektirmeyen **Oyun İçi AeroMC Komutları**: Ayarlar'dan açıldığında yalnız `ops.json` içindeki OP'ler sohbete `.aeromc sağlık`, `.aeromc performans`, `.aeromc oyuncular`, `.aeromc kriz`, `.aeromc durum` veya `.aeromc yardım` yazarak AeroMC'nin canlı durumunu oyun içinden alır; ayrıca `.aeromc duyur <mesaj>` ile 160 karaktere kadar renkli duyuruyu herkese iletebilir. Yanıtlar güvenli `tellraw` ile döner. Yerel JAR, Exaroton ve Pterodactyl desteklenir
 - Exaroton hesap kredisi ve sunucu RAM bilgisi
 - Resmî API'den adres, durum, yazılım/sürüm, RAM ve hesap kredisini doğrulayan **Exaroton Hazırlık Denetimi**; 12 saniyelik kesin zaman aşımı, başarısızlıkta onaylı denetimsiz başlatma ve Ayarlar'dan tamamen kapatma
 - Oyuncular çevrimiçiyken yeniden başlatma onayı ve isteğe bağlı otomatik duyuru

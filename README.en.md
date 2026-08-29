@@ -2,7 +2,7 @@
 
 [Türkçe](README.md) · **English**
 
-> Stable release: **4.0.0** · AeroGuard **V2.3** · [V4 roadmap](V4-ROADMAP.md) · [4.0 release notes](release-notes/v4.0.0.md)
+> Stable release: **4.0.0** · Current pre-release: **4.1.0-beta** · [4.1 beta release notes](release-notes/v4.1.0-beta.md) · [V4 roadmap](V4-ROADMAP.md)
 
 AeroMC is a JavaFX desktop application for managing Minecraft servers through four provider modes:
 
@@ -61,6 +61,7 @@ On Linux, desktop notifications use `notify-send` without mixing AWT SystemTray 
 - Crash Loop Shield that blocks automatic restart for 15 minutes after the third local crash in five minutes
 - One-click Spark profiling with Quick, Normal, and Detailed durations, verified report capture, and real five-second TPS comparison against the previous report
 - Player achievement cards built from play time, joins, deaths, and advancements
+- Plugin-free **In-Game AeroMC Commands**: when enabled in Settings, only operators listed in `ops.json` can type `.aeromc health`, `.aeromc performance`, `.aeromc players`, `.aeromc crisis`, `.aeromc status`, or `.aeromc help` in chat and receive live AeroMC information through a safe `tellraw` reply. They can also use `.aeromc announce <message>` to send a color-coded announcement of up to 160 characters to all players. Local JAR, Exaroton, and Pterodactyl are supported
 
 ## Exaroton management
 

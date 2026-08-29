@@ -37,7 +37,8 @@ javac -encoding UTF-8 -cp "$CLASSPATH" -d "$TEST_CLASSES" \
   work/MapParserSmoke.java \
   work/ModCenterSmoke.java \
   work/RemoteSmoke.java \
-  work/SyncBackupSecuritySmoke.java
+  work/SyncBackupSecuritySmoke.java \
+  work/InGameAeroMCBridgeSmoke.java
 
 for TEST in \
   AternosStatusSmoke \
@@ -67,6 +68,7 @@ for TEST in \
   SyncBackupSecuritySmoke; do
   java -Duser.home="$TEST_HOME" -cp "$TEST_CLASSES:$CLASSPATH" "com.aerogroup.mcpanel.$TEST"
 done
+java -Duser.home="$TEST_HOME" -cp "$TEST_CLASSES:$CLASSPATH" "com.aerogroup.mcpanel.InGameAeroMCBridgeSmoke"
 java -Duser.home="$TEST_HOME" -cp "$TEST_CLASSES:$CLASSPATH" RemoteSmoke
 
 echo "AeroMC çevrimdışı smoke testleri başarılı."
