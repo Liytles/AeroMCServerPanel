@@ -529,6 +529,13 @@ public final class ExarotonPane {
     public void shutdown() { refresh.stop(); creditRefresh.stop(); fleetRefresh.stop(); automationRefresh.stop(); token.clear(); if (active != null) active.unsubscribe(); }
     public boolean hasActiveServer() { return active != null; }
     public void openAutomationTab() { if (exarotonTabs != null && exarotonTabs.getTabs().size() > 3) exarotonTabs.getSelectionModel().select(3); }
+    /** Applies only non-destructive preferences. It never enables automation or stops a server. */
+    public void applyServerProfile(String profileId) {
+        if ("economy".equals(profileId)) { lowCreditEnabled.setSelected(true); lowCreditThreshold.getValueFactory().setValue(3.0); stopAtLowCredit.setSelected(false); }
+        else if ("friends".equals(profileId)) { automationIdleStop.setSelected(true); automationIdleMinutes.getValueFactory().setValue(10); }
+        else if ("performance".equals(profileId)) { crashRecovery.setSelected(true); recoveryAttempts.getValueFactory().setValue(2); }
+        updateThresholdControls(); updateAutomationControls(); saveGuardPreferences(); saveAutomationPreferences(false); checkLowCredit();
+    }
     public String getActiveServerName() { return activeServerName.get(); }
     private String notificationSource(Server server) { return NotificationCenter.serverSource("Exaroton", server == null ? "" : server.getName()); }
     public ReadOnlyStringProperty activeServerNameProperty() { return activeServerName.getReadOnlyProperty(); }

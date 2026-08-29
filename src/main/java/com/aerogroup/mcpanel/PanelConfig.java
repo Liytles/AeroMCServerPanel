@@ -17,10 +17,12 @@ public final class PanelConfig {
     private boolean liveMapEnabled = true;
     private boolean automaticCredentialVaultEnabled;
     private boolean exarotonReadinessCheckEnabled = true;
+    private boolean inGameCommandsEnabled;
     private boolean automaticUpdateCheckEnabled = true;
     private boolean featureTourCompleted;
     private String updateChannel = "stable";
     private String pterodactylPanelUrl = "";
+    private String serverProfile = "friends";
     private boolean crisisModeEnabled;
     private double crisisTpsThreshold = 16.0;
     private double crisisRamThreshold = 90.0;
@@ -44,10 +46,12 @@ public final class PanelConfig {
             config.liveMapEnabled = Boolean.parseBoolean(values.getProperty("liveMapEnabled", "true"));
             config.automaticCredentialVaultEnabled = Boolean.parseBoolean(values.getProperty("automaticCredentialVaultEnabled", "false"));
             config.exarotonReadinessCheckEnabled = Boolean.parseBoolean(values.getProperty("exarotonReadinessCheckEnabled", "true"));
+            config.inGameCommandsEnabled = Boolean.parseBoolean(values.getProperty("inGameCommandsEnabled", "false"));
             config.automaticUpdateCheckEnabled = Boolean.parseBoolean(values.getProperty("automaticUpdateCheckEnabled", "true"));
             config.featureTourCompleted = Boolean.parseBoolean(values.getProperty("featureTourCompleted", "false"));
             config.updateChannel = "beta".equalsIgnoreCase(values.getProperty("updateChannel", "stable")) ? "beta" : "stable";
             config.pterodactylPanelUrl = values.getProperty("pterodactylPanelUrl", "").trim();
+            config.serverProfile = values.getProperty("serverProfile", "friends").trim();
             config.crisisModeEnabled = Boolean.parseBoolean(values.getProperty("crisisModeEnabled", "false"));
             config.crisisTpsThreshold = Double.parseDouble(values.getProperty("crisisTpsThreshold", "16.0"));
             config.crisisRamThreshold = Double.parseDouble(values.getProperty("crisisRamThreshold", "90.0"));
@@ -69,10 +73,12 @@ public final class PanelConfig {
         values.setProperty("liveMapEnabled", Boolean.toString(liveMapEnabled));
         values.setProperty("automaticCredentialVaultEnabled", Boolean.toString(automaticCredentialVaultEnabled));
         values.setProperty("exarotonReadinessCheckEnabled", Boolean.toString(exarotonReadinessCheckEnabled));
+        values.setProperty("inGameCommandsEnabled", Boolean.toString(inGameCommandsEnabled));
         values.setProperty("automaticUpdateCheckEnabled", Boolean.toString(automaticUpdateCheckEnabled));
         values.setProperty("featureTourCompleted", Boolean.toString(featureTourCompleted));
         values.setProperty("updateChannel", updateChannel);
         values.setProperty("pterodactylPanelUrl", pterodactylPanelUrl);
+        values.setProperty("serverProfile", serverProfile);
         values.setProperty("crisisModeEnabled", Boolean.toString(crisisModeEnabled));
         values.setProperty("crisisTpsThreshold", Double.toString(crisisTpsThreshold));
         values.setProperty("crisisRamThreshold", Double.toString(crisisRamThreshold));
@@ -100,6 +106,8 @@ public final class PanelConfig {
     public void setAutomaticCredentialVaultEnabled(boolean value) { automaticCredentialVaultEnabled = value; }
     public boolean isExarotonReadinessCheckEnabled() { return exarotonReadinessCheckEnabled; }
     public void setExarotonReadinessCheckEnabled(boolean value) { exarotonReadinessCheckEnabled = value; }
+    public boolean isInGameCommandsEnabled() { return inGameCommandsEnabled; }
+    public void setInGameCommandsEnabled(boolean value) { inGameCommandsEnabled = value; }
     public boolean isAutomaticUpdateCheckEnabled() { return automaticUpdateCheckEnabled; }
     public void setAutomaticUpdateCheckEnabled(boolean value) { automaticUpdateCheckEnabled = value; }
     public boolean isFeatureTourCompleted() { return featureTourCompleted; }
@@ -108,6 +116,8 @@ public final class PanelConfig {
     public void setUpdateChannel(String value) { updateChannel = "beta".equalsIgnoreCase(value) ? "beta" : "stable"; }
     public String getPterodactylPanelUrl() { return pterodactylPanelUrl; }
     public void setPterodactylPanelUrl(String value) { pterodactylPanelUrl = value == null ? "" : value.trim(); }
+    public String getServerProfile() { return serverProfile; }
+    public void setServerProfile(String value) { serverProfile = value == null || value.isBlank() ? "friends" : value.trim(); }
     public boolean isCrisisModeEnabled() { return crisisModeEnabled; }
     public void setCrisisModeEnabled(boolean value) { crisisModeEnabled = value; }
     public double getCrisisTpsThreshold() { return crisisTpsThreshold; }

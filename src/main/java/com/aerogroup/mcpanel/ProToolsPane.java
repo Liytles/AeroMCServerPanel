@@ -1,6 +1,7 @@
 package com.aerogroup.mcpanel;
 
 import com.aerogroup.mcpanel.aeroguard.CrashLoopGuard;
+import com.aerogroup.mcpanel.aeroguard.SafePathGuard;
 
 import com.exaroton.api.server.config.ConfigOption;
 import javafx.animation.*;
@@ -22,6 +23,7 @@ import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.*;
 
 /** Sağlık, Spark, otomasyon ve ayrılmış Pro araç bileşenlerini koordine eder. */
@@ -44,6 +46,7 @@ public final class ProToolsPane {
     private final DiscordNotificationsPane discordPane;
     private final SparkProfilerPane sparkPane;
     private final ScheduledTasksPane scheduledTasksPane;
+    private final InGameAeroMCBridge inGameBridge;
     private final ComboBox<String> provider = new ComboBox<>(FXCollections.observableArrayList("Yerel JAR", "Exaroton", "Pterodactyl"));
     private final Label providerState = new Label();
     private final ObservableList<String> findings = FXCollections.observableArrayList();
@@ -74,7 +77,7 @@ public final class ProToolsPane {
     private final Spinner<Integer> crisisRecoverySeconds;
     private final Spinner<Integer> crisisCooldownSeconds;
     private long lastPid = -1, lastCpuNanos = -1, lastSampleNanos = -1, sampleIndex;
-    private int currentMemoryMb;
+    private int currentMemoryMb = -1;
     private boolean memoryWarned, autoRestarting;
     private boolean serverOnline, crisisActive, crisisManual, crisisTransitioning, crisisNeedsMetricsForRecovery, latencyProbeRunning;
     private String crisisProvider;
@@ -89,6 +92,8 @@ public final class ProToolsPane {
     private Boolean lastRemoteOnline;
     private boolean remoteMetricsReceived;
     private String activeCrisisHistoryId;
+    private volatile int localOnlinePlayers;
+    private final AtomicReference<CompletableFuture<Integer>> inGamePlayerRefresh = new AtomicReference<>();
     private VBox localAutomationCard;
     private final Runnable openExarotonAutomation;
 
@@ -109,6 +114,8 @@ public final class ProToolsPane {
         }, this::recordEvent,
                 (action, message) -> sendDiscord(DiscordNotificationEngine.Type.AUTOMATION, "Zamanlanmış görev tetiklendi", action + (message.isBlank() ? "" : " • " + message), false),
                 message -> findings.add(0, now() + "  ZAMANLAYICI: " + message));
+        this.inGameBridge = new InGameAeroMCBridge(config, this::loadInGameOps, this::inGameSnapshot, this::sendInGameCommand,
+                message -> Platform.runLater(() -> { findings.add(0, now() + "  OYUN İÇİ KOMUT: " + message); while (findings.size() > 100) findings.remove(findings.size() - 1); }));
         crisisTps = new Spinner<>(10.0, 19.5, Math.max(10.0, Math.min(19.5, config.getCrisisTpsThreshold())), 0.5);
         crisisRam = new Spinner<>(70, 99, Math.max(70, Math.min(99, (int) config.getCrisisRamThreshold())), 1);
         crisisTriggerSeconds = new Spinner<>(4, 60, config.getCrisisTriggerSeconds(), 2);
@@ -214,14 +221,16 @@ public final class ProToolsPane {
     }
 
     public void onConsole(String line) {
+        inGameBridge.accept(InGameAeroMCBridge.Provider.LOCAL, line);
         if (isRemote()) return;
         analyzeConsole(line);
     }
     private void onRemoteConsole(String line) {
+        inGameBridge.accept(InGameAeroMCBridge.Provider.EXAROTON, line);
         if (!isExaroton()) return;
         analyzeConsole(line);
     }
-    private void onPterodactylConsole(String line) { if (isPterodactyl()) analyzeConsole(line); }
+    private void onPterodactylConsole(String line) { inGameBridge.accept(InGameAeroMCBridge.Provider.PTERODACTYL, line); if (isPterodactyl()) analyzeConsole(line); }
     private void analyzeConsole(String line) {
         synchronized (consoleHistory) { consoleHistory.addLast(line); while (consoleHistory.size() > 300) consoleHistory.removeFirst(); }
         incidentContext.recordConsole(line);
@@ -257,9 +266,89 @@ public final class ProToolsPane {
     }
 
     public void onPlayers(List<String> names) {
-        if (isRemote()) return;
-        acceptPlayers(names);
+        localOnlinePlayers = names == null ? 0 : names.size();
+        CompletableFuture<Integer> waiting = inGamePlayerRefresh.getAndSet(null);
+        if (waiting != null) waiting.complete(localOnlinePlayers);
+        if (!isRemote()) acceptPlayers(names);
     }
+
+    private CompletableFuture<String> loadInGameOps(InGameAeroMCBridge.Provider source) {
+        try {
+            return switch (source) {
+                case LOCAL -> CompletableFuture.supplyAsync(() -> {
+                    Path jar = config.getServerJar(); if (jar == null || jar.getParent() == null) return "[]";
+                    try {
+                        Path root = jar.getParent().toAbsolutePath().normalize(); Path file = SafePathGuard.resolve(root, "ops.json", false);
+                        if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || Files.size(file) > 131_072) return "[]";
+                        return Files.readString(file, StandardCharsets.UTF_8);
+                    } catch (IOException error) { return "[]"; }
+                });
+                case EXAROTON -> exaroton.readRemoteFile("/ops.json");
+                case PTERODACTYL -> pterodactyl.readRemoteFile("/ops.json");
+            };
+        } catch (Exception error) { return CompletableFuture.failedFuture(error); }
+    }
+
+    private CompletableFuture<InGameAeroMCBridge.Snapshot> inGameSnapshot(InGameAeroMCBridge.Provider source) {
+        try {
+            double tps = inGameMetricAvailable(source) ? currentTps : Double.NaN;
+            double ramPercent = inGameMetricAvailable(source) ? currentRamPercent : Double.NaN;
+            return switch (source) {
+                case LOCAL -> refreshLocalInGamePlayers().thenApply(ignored -> freshLocalInGameSnapshot());
+                case EXAROTON -> exaroton.fetchProSnapshot().thenApply(value -> new InGameAeroMCBridge.Snapshot(value.online(), value.players(), value.maxPlayers(), tps, ramPercent, currentLatencyMs, crisisActive, Double.NaN, -1, Math.max(0, value.ramGiB()) * 1024L));
+                case PTERODACTYL -> pterodactyl.fetchProSnapshot().thenApply(value -> new InGameAeroMCBridge.Snapshot(value.online(), value.players(), value.maxPlayers(), tps, ramPercent, currentLatencyMs, crisisActive, currentCpuPercent, currentMemoryMb, value.memoryLimitMb()));
+            };
+        } catch (Exception error) { return CompletableFuture.failedFuture(error); }
+    }
+
+    /** Konsolun periyodik yenilemesini beklemeden, oyun içi komut için güncel /list yanıtını ister. */
+    private CompletableFuture<Integer> refreshLocalInGamePlayers() {
+        if (!manager.isRunning()) return CompletableFuture.completedFuture(0);
+        CompletableFuture<Integer> existing = inGamePlayerRefresh.get();
+        if (existing != null && !existing.isDone()) return existing;
+        CompletableFuture<Integer> request = new CompletableFuture<>();
+        if (!inGamePlayerRefresh.compareAndSet(existing, request)) return refreshLocalInGamePlayers();
+        manager.requestPlayers();
+        request.completeOnTimeout(localOnlinePlayers, 1200, TimeUnit.MILLISECONDS)
+                .whenComplete((value, error) -> inGamePlayerRefresh.compareAndSet(request, null));
+        return request;
+    }
+
+    /** Komut anında ölçüm alır; Kontrol Merkezi açık olmasa bile Yerel JAR verisi güncel kalır. */
+    private InGameAeroMCBridge.Snapshot freshLocalInGameSnapshot() {
+        long pid = manager.getProcessId();
+        if (pid <= 0) return new InGameAeroMCBridge.Snapshot(false, localOnlinePlayers, 0, Double.NaN, Double.NaN, Double.NaN, crisisActive, Double.NaN, -1, config.getMemoryMb());
+        Optional<ProcessHandle> handle = ProcessHandle.of(pid);
+        if (handle.isEmpty()) return new InGameAeroMCBridge.Snapshot(false, localOnlinePlayers, 0, Double.NaN, Double.NaN, currentLatencyMs, crisisActive, Double.NaN, -1, config.getMemoryMb());
+        long startedAt = System.nanoTime();
+        long cpuBefore = handle.get().info().totalCpuDuration().orElse(java.time.Duration.ZERO).toNanos();
+        try { Thread.sleep(300); } catch (InterruptedException error) { Thread.currentThread().interrupt(); }
+        long elapsed = Math.max(1, System.nanoTime() - startedAt);
+        long cpuAfter = handle.get().info().totalCpuDuration().orElse(java.time.Duration.ZERO).toNanos();
+        double cpu = Math.max(0, Math.min(999, (cpuAfter - cpuBefore) * 100.0 / elapsed));
+        int memory = readMemoryMb(pid);
+        double ramPercent = memory < 0 ? Double.NaN : memory * 100.0 / Math.max(1, config.getMemoryMb());
+        return new InGameAeroMCBridge.Snapshot(manager.isRunning(), localOnlinePlayers, 0, Double.NaN, ramPercent, currentLatencyMs, crisisActive, cpu, memory, config.getMemoryMb());
+    }
+
+    private boolean inGameMetricAvailable(InGameAeroMCBridge.Provider source) {
+        return switch (source) {
+            case LOCAL -> !isRemote();
+            case EXAROTON -> isExaroton();
+            case PTERODACTYL -> isPterodactyl();
+        };
+    }
+
+    private void sendInGameCommand(InGameAeroMCBridge.Provider source, String command) {
+        try {
+            switch (source) {
+                case LOCAL -> { if (manager.isRunning()) manager.command(command); }
+                case EXAROTON -> exaroton.executeAdminCommand(command).exceptionally(error -> { logInGameError(error); return null; });
+                case PTERODACTYL -> pterodactyl.executeAdminCommand(command).exceptionally(error -> { logInGameError(error); return null; });
+            }
+        } catch (Exception error) { logInGameError(error); }
+    }
+    private void logInGameError(Throwable error) { Platform.runLater(() -> findings.add(0, now() + "  OYUN İÇİ KOMUT: Yanıt gönderilemedi • " + rootMessage(error))); }
     private void acceptPlayers(List<String> names) {
         PlayerInsightsPane.Changes changes = playerInsightsPane.acceptPlayers(names);
         for (String name : changes.joined()) { recordEvent("Oyuncu", name + " katıldı"); sendDiscord(DiscordNotificationEngine.Type.PLAYER, "Oyuncu katıldı", name + " sunucuya katıldı.", false); }
@@ -486,7 +575,7 @@ public final class ProToolsPane {
         task.setOnSucceeded(event -> { latencyProbeRunning = false; currentLatencyMs = task.getValue(); latencyValue.setText(task.getValue() + " ms"); updateHealthAndCrisis(); });
         task.setOnFailed(event -> { latencyProbeRunning = false; currentLatencyMs = Double.NaN; latencyValue.setText("-"); updateHealthAndCrisis(); }); run(task, "health-latency");
     }
-    private void resetProcessSample() { lastPid = -1; lastCpuNanos = -1; lastSampleNanos = -1; currentMemoryMb = 0; currentTps = currentRamPercent = currentCpuPercent = currentLatencyMs = Double.NaN; latencyValue.setText("-"); }
+    private void resetProcessSample() { lastPid = -1; lastCpuNanos = -1; lastSampleNanos = -1; currentMemoryMb = -1; currentTps = currentRamPercent = currentCpuPercent = currentLatencyMs = Double.NaN; latencyValue.setText("-"); }
     private int readMemoryMb(long pid) {
         Path status = Path.of("/proc", Long.toString(pid), "status"); if (!Files.isReadable(status)) return -1;
         try { for (String line : Files.readAllLines(status)) if (line.startsWith("VmRSS:")) return Integer.parseInt(line.replaceAll("[^0-9]", "")) / 1024; } catch (Exception ignored) { } return -1;
@@ -516,7 +605,7 @@ public final class ProToolsPane {
 
     private void runRemoteAction(String name, Callable<CompletableFuture<Void>> action) { Task<Void> task = new Task<>() { protected Void call() throws Exception { action.call().join(); return null; } }; task.setOnFailed(event -> showError(name + " başarısız: " + rootMessage(task.getException()))); run(task, name.toLowerCase(Locale.ROOT).replace(' ', '-')); }
 
-    public void shutdown() { metrics.stop(); scheduledTasksPane.shutdown(); sparkPane.shutdown(); discordPane.shutdown(); if (crisisActive) { try { restoreCrisisSettings(); if (activeCrisisHistoryId != null) crisisHistory.finish(activeCrisisHistoryId, Instant.now(), "AeroMC kapanırken güvenle sonlandırıldı"); } catch (Exception ignored) { } } playerInsightsPane.disconnectAll(); }
+    public void shutdown() { metrics.stop(); inGameBridge.shutdown(); scheduledTasksPane.shutdown(); sparkPane.shutdown(); discordPane.shutdown(); if (crisisActive) { try { restoreCrisisSettings(); if (activeCrisisHistoryId != null) crisisHistory.finish(activeCrisisHistoryId, Instant.now(), "AeroMC kapanırken güvenle sonlandırıldı"); } catch (Exception ignored) { } } playerInsightsPane.disconnectAll(); }
     private void atomicWrite(Path file, String text) throws IOException { Path temp = Files.createTempFile(file.getParent(), ".aeromc-", ".tmp"); Files.writeString(temp, text, StandardCharsets.UTF_8); try { Files.move(temp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); } catch (AtomicMoveNotSupportedException ignored) { Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING); } }
     private void updateProperty(Path file, String key, String value) throws IOException { List<String> lines = Files.exists(file) ? Files.readAllLines(file, StandardCharsets.UTF_8) : new ArrayList<>(); boolean found = false; List<String> out = new ArrayList<>(); for (String line : lines) { if (!line.stripLeading().startsWith("#") && line.startsWith(key + "=")) { out.add(key + "=" + value); found = true; } else out.add(line); } if (!found) out.add(key + "=" + value); Files.createDirectories(file.getParent()); atomicWrite(file, String.join(System.lineSeparator(), out) + System.lineSeparator()); }
     private Properties loadProperties(Path file) { Properties values = new Properties(); try { if (Files.exists(file)) try (Reader reader = Files.newBufferedReader(file)) { values.load(reader); } } catch (IOException ignored) { } return values; }

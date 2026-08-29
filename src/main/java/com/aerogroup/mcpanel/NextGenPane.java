@@ -36,6 +36,8 @@ public final class NextGenPane {
     private final PanelConfig config;
     private final HostServices hostServices;
     private final BiConsumer<Path, Integer> installedJar;
+    private final Runnable openGameOverlay;
+    private final java.util.function.Supplier<Node> profilesView;
     private final RemoteControlService remote;
     private final SparkInstaller sparkInstaller = new SparkInstaller();
     private final HttpClient http = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).connectTimeout(java.time.Duration.ofSeconds(15)).build();
@@ -58,13 +60,20 @@ public final class NextGenPane {
     private final ObservableList<RemoteControlService.AuditEntry> audit = FXCollections.observableArrayList();
     private final Label remoteState = new Label("Kapalı"), remoteTlsState = new Label("TLS kimliği ilk başlatmada oluşturulacak");
 
-    public NextGenPane(ServerManager manager, ExarotonPane exaroton, PanelConfig config, HostServices hostServices, BiConsumer<Path, Integer> installedJar) {
-        this.manager = manager; this.exaroton = exaroton; this.config = config; this.hostServices = hostServices; this.installedJar = installedJar; this.remote = new RemoteControlService(manager, exaroton, config);
+    public NextGenPane(ServerManager manager, ExarotonPane exaroton, PanelConfig config, HostServices hostServices, BiConsumer<Path, Integer> installedJar, Runnable openGameOverlay, java.util.function.Supplier<Node> profilesView) {
+        this.manager = manager; this.exaroton = exaroton; this.config = config; this.hostServices = hostServices; this.installedJar = installedJar; this.openGameOverlay = openGameOverlay; this.profilesView = profilesView; this.remote = new RemoteControlService(manager, exaroton, config);
     }
     public Node buildView() {
-        Tab setup = tab("Kurulum", setupView()), compat = tab("Uyumluluk", compatibilityView()), backup = tab("Yedekler", backupView()), optimization = tab("Optimizasyon", optimizationView()), access = tab("Uzaktan Erişim", remoteView());
-        TabPane tabs = new TabPane(setup, compat, backup, optimization, access);
+        Tab setup = tab("Kurulum", setupView()), compat = tab("Uyumluluk", compatibilityView()), backup = tab("Yedekler", backupView()), optimization = tab("Optimizasyon", optimizationView()), profiles = tab("Sunucu Profilleri", profilesView.get()), overlay = tab("Oyun Yardımcısı", overlayView()), access = tab("Uzaktan Erişim", remoteView());
+        TabPane tabs = new TabPane(setup, compat, backup, optimization, profiles, overlay, access);
         tabs.getStyleClass().add("inner-tabs"); tabs.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> { if (newTab == compat) refreshServerTargets(); if (newTab == backup) { refreshServerTargets(); refreshBackups(); } if (newTab == access) refreshSecurity(); }); return tabs;
+    }
+
+    private Node overlayView() {
+        Label detail = new Label("Minecraft'a mod kurmadan, AeroMC'nin yetkili olduğu Yerel JAR, Exaroton ve Pterodactyl sunucuları için oyunun üzerinde küçük bir yardımcı pencere açar. Sağlık özeti, oyuncu sayısı ve kaynak bilgisi gösterir; duyurular AeroMC üzerinden güvenle gönderilir."); detail.setWrapText(true); detail.getStyleClass().add("muted");
+        Label safety = new Label("API anahtarları overlay'e aktarılmaz; anahtarlar yalnız AeroMC'nin güvenli kasasında kalır. Pencere her zaman üstte çalışır ve Gizle ile kapatılabilir."); safety.setWrapText(true); safety.getStyleClass().add("muted");
+        Button open = button("OYUN YARDIMCISINI AÇ", "primary"); open.setOnAction(event -> openGameOverlay.run());
+        return page(card("AEROMC OYUN YARDIMCISI", detail, safety, open));
     }
 
     private Node setupView() {

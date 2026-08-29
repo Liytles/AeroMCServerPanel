@@ -43,6 +43,8 @@ public final class MainController {
     private final DashboardPane dashboardPane = new DashboardPane();
     private final ManagementPane managementPane;
     private ProToolsPane proToolsPane;
+    private final GameOverlayWindow gameOverlay;
+    private final ServerProfilesPane serverProfilesPane;
     private final NextGenPane nextGenPane;
     private final SettingsPane settingsPane;
     private PlayerMapPane playerMapPane;
@@ -66,8 +68,10 @@ public final class MainController {
         }, config);
         managementPane = new ManagementPane(manager, exarotonPane, pterodactylPane);
         proToolsPane = new ProToolsPane(manager, exarotonPane, pterodactylPane, config, hostServices, this::openExarotonAutomation);
+        gameOverlay = new GameOverlayWindow(manager, exarotonPane, pterodactylPane, config, players::size);
+        serverProfilesPane = new ServerProfilesPane(config, exarotonPane, this::applyProfileMemory);
         if (config.isLiveMapEnabled()) playerMapPane = new PlayerMapPane(manager, exarotonPane, pterodactylPane);
-        nextGenPane = new NextGenPane(manager, exarotonPane, config, hostServices, this::useInstalledJar);
+        nextGenPane = new NextGenPane(manager, exarotonPane, config, hostServices, this::useInstalledJar, gameOverlay::show, serverProfilesPane::buildView);
         settingsPane = new SettingsPane(config, this::setLiveMapEnabled, this::setAutomaticCredentialVaultEnabled, this::showFeatureTour, hostServices);
         playerRefresh = new Timeline(new KeyFrame(Duration.seconds(15), event -> manager.requestPlayers()));
         playerRefresh.setCycleCount(Animation.INDEFINITE);
@@ -211,6 +215,7 @@ public final class MainController {
         File file = chooser.showOpenDialog(root.getScene().getWindow()); if (file != null) { jarPath.setText(file.getAbsolutePath()); manager.configure(file.toPath()); config.setServerJar(file.toPath()); try { config.save(); } catch (IOException ignored) { } }
     }
     private void useInstalledJar(Path jar, Integer ram) { jarPath.setText(jar.toAbsolutePath().toString()); manager.configure(jar); config.setServerJar(jar); config.setMemoryMb(ram); memory.getValueFactory().setValue(ram); try { config.save(); } catch (IOException ignored) { } }
+    private void applyProfileMemory(int ram) { memory.getValueFactory().setValue(ram); config.setMemoryMb(ram); }
     private void setLiveMapEnabled(Boolean enabled) {
         if (enabled && playerMapPane == null) {
             playerMapPane = new PlayerMapPane(manager, exarotonPane, pterodactylPane); liveMapTab = lazyTab(LanguageManager.text("Canlı Harita"), playerMapPane::buildView);
@@ -298,7 +303,7 @@ public final class MainController {
         } catch (IOException | IllegalArgumentException error) { alert("Komut gönderilemedi", error.getMessage()); return false; }
     }
     private void alert(String title, String message) { Alert alert = new Alert(Alert.AlertType.ERROR, LanguageManager.text(message == null ? "Bilinmeyen hata" : message), ButtonType.OK); alert.setTitle(LanguageManager.text(title)); alert.setHeaderText(LanguageManager.text(title)); alert.showAndWait(); }
-    public void shutdown() { playerRefresh.stop(); scheduledBackup.stop(); nextGenPane.shutdown(); if (playerMapPane != null) playerMapPane.shutdown(); if (proToolsPane != null) proToolsPane.shutdown(); manager.shutdown(); exarotonPane.shutdown(); aternosPane.shutdown(); pterodactylPane.shutdown(); dashboardPane.shutdown(); }
+    public void shutdown() { playerRefresh.stop(); gameOverlay.close(); scheduledBackup.stop(); nextGenPane.shutdown(); if (playerMapPane != null) playerMapPane.shutdown(); if (proToolsPane != null) proToolsPane.shutdown(); manager.shutdown(); exarotonPane.shutdown(); aternosPane.shutdown(); pterodactylPane.shutdown(); dashboardPane.shutdown(); }
     private static final class LazyTabContent {
         private final Supplier<Node> factory;
         private Node node;

@@ -77,6 +77,15 @@ public final class SettingsPane {
             catch (IOException error) { exarotonReadiness.setSelected(previous); config.setExarotonReadinessCheckEnabled(previous); showError(error.getMessage()); }
         });
 
+        CheckBox inGameCommands = new CheckBox("OP oyuncuları için oyun içi AeroMC komutlarını etkinleştir");
+        inGameCommands.setSelected(config.isInGameCommandsEnabled());
+        Label inGameNote = note("AeroMC açıkken konsoldaki .aeromc sağlık, performans, oyuncular, kriz, durum, yardım ve duyur <mesaj> sohbetlerini algılar; yalnız ops.json içindeki OP oyunculara tellraw ile cevap verir. Duyurular 160 karakterle sınırlıdır. Yerel JAR, Exaroton ve Pterodactyl desteklenir. Aternos yönetim konsolu sunmadığından kullanılamaz.");
+        inGameCommands.setOnAction(event -> {
+            boolean enabled = inGameCommands.isSelected(), previous = !enabled; config.setInGameCommandsEnabled(enabled);
+            try { config.save(); }
+            catch (IOException error) { inGameCommands.setSelected(previous); config.setInGameCommandsEnabled(previous); showError(error.getMessage()); }
+        });
+
         Label javaState = note("Minecraft Java aranıyor...");
         Button chooseJava = button("Java Seç", "primary");
         Button refreshJava = button("Yeniden Tara", "secondary");
@@ -114,6 +123,7 @@ public final class SettingsPane {
                 card("MINECRAFT JAVA YÖNETİMİ", javaState, javaControls, javaNote),
                 card("GÜVENLİ KİMLİK BİLGİLERİ", automaticVault, vaultState, vaultNote),
                 card("EXAROTON BAŞLATMA", exarotonReadiness, readinessNote),
+                card("OYUN İÇİ AEROMC KOMUTLARI", inGameCommands, inGameNote),
                 card("PERFORMANS ÖZELLİKLERİ", liveMap, mapNote),
                 card("ARAYÜZ DÜZENİ", organization),
                 publisher);
