@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 "$ROOT_DIR/scripts/prepare-package.sh"
 VERSION="$(sed -n 's:.*<version>\([^<]*\)</version>.*:\1:p' "$ROOT_DIR/pom.xml" | head -n 1)"
 test -n "$VERSION"
+PACKAGE_VERSION="$(printf '%s' "$VERSION" | sed -E 's/^([0-9]+(\.[0-9]+){0,2}).*/\1/')"
+[[ "$PACKAGE_VERSION" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] || { echo "Geçersiz paket sürümü: $VERSION" >&2; exit 1; }
 MAINTAINER_EMAIL="${AEROMC_MAINTAINER_EMAIL:-aeromc@localhost}"
 
 OUTPUT_DIR="$ROOT_DIR/release/linux"
@@ -20,7 +22,7 @@ jpackage \
   --dest "$OUTPUT_DIR" \
   --input "$ROOT_DIR/target/package-input" \
   --name AeroMC \
-  --app-version "$VERSION" \
+  --app-version "$PACKAGE_VERSION" \
   --vendor "The Aero Group" \
   --copyright "Copyright (c) 2026 The Aero Group" \
   --description "Cross-platform Minecraft server management panel" \

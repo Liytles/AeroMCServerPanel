@@ -23,6 +23,10 @@ Copy-Item -Force (Join-Path $RootDir "INSTALLER-EULA.txt") (Join-Path $RootDir "
 Copy-Item -Force (Join-Path $RootDir "THIRD-PARTY-NOTICES.md") (Join-Path $RootDir "target\package-input\THIRD-PARTY-NOTICES.md")
 [xml]$Pom = Get-Content (Join-Path $RootDir "pom.xml")
 $Version = $Pom.project.version
+$PackageVersion = $Version -replace '^([0-9]+(?:\.[0-9]+){0,2}).*$', '$1'
+if ($PackageVersion -notmatch '^[0-9]+(?:\.[0-9]+){0,2}$') {
+    throw "Geçersiz paket sürümü: $Version"
+}
 
 $OutputDir = Join-Path $RootDir "release\windows"
 $ExpectedOutput = [System.IO.Path]::GetFullPath((Join-Path $RootDir "release\windows"))
@@ -35,7 +39,7 @@ New-Item -ItemType Directory -Force $OutputDir | Out-Null
   --dest $OutputDir `
   --input (Join-Path $RootDir "target\package-input") `
   --name AeroMC `
-  --app-version $Version `
+  --app-version $PackageVersion `
   --vendor "The Aero Group" `
   --copyright "Copyright (c) 2026 The Aero Group" `
   --description "Cross-platform Minecraft server management panel" `
