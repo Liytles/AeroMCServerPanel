@@ -7,7 +7,9 @@ import java.util.List;
 
 public final class SmartInsightsSmoke {
     public static void main(String[] args) throws Exception {
-        Instant now = Instant.parse("2026-08-24T18:00:00Z");
+        // Keep the fixture inside the retention window.  A fixed historical
+        // timestamp made this test fail as calendar time moved forward.
+        Instant now = Instant.now();
         String source = NotificationCenter.serverSource("Yerel JAR", "");
         List<NotificationCenter.Entry> entries = List.of(
                 new NotificationCenter.Entry("1", now.minusSeconds(50), NotificationCenter.Severity.CRITICAL, source, "Sunucu çöktü", "Crash raporu oluştu", false),
