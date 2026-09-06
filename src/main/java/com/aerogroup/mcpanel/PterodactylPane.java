@@ -20,11 +20,14 @@ import javafx.util.Duration;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /** Pterodactyl Client API sunucularını güvenli bir masaüstü sağlayıcı görünümünde yönetir. */
 public final class PterodactylPane {
@@ -50,6 +53,7 @@ public final class PterodactylPane {
     private final Button kill = button("Zorla Kapat", "danger");
     private final Button refreshNow = button("Şimdi Yenile", "secondary");
     private final Timeline refresh = new Timeline(new KeyFrame(Duration.seconds(10), event -> refreshSelected()));
+    private final Timeline fleetHistoryRefresh = new Timeline(new KeyFrame(Duration.minutes(1), event -> refreshFleetHistory()));
     private final Timeline liveUiRefresh = new Timeline(new KeyFrame(Duration.seconds(1), event -> flushLiveUi()));
     private final AtomicReference<PterodactylClient.ConsoleStats> pendingStats = new AtomicReference<>();
     private final AtomicReference<PterodactylClient.PowerState> pendingState = new AtomicReference<>();
@@ -58,16 +62,21 @@ public final class PterodactylPane {
     private final List<Consumer<ProSnapshot>> snapshotListeners = new CopyOnWriteArrayList<>();
     private final List<Consumer<ProMetrics>> metricsListeners = new CopyOnWriteArrayList<>();
     private final ExecutorService apiExecutor = Executors.newFixedThreadPool(3, runnable -> { Thread thread = new Thread(runnable, "aeromc-pterodactyl-api"); thread.setDaemon(true); return thread; });
+    private final FleetHealthHistory fleetHealthHistory = FleetHealthHistory.forPterodactyl();
+    private static final Pattern PLAYER_LIST = Pattern.compile("There are \\d+ of a max of \\d+ players online:\\s*(.*)", Pattern.CASE_INSENSITIVE);
     private PterodactylClient client;
     private PterodactylClient.ServerInfo active;
     private PterodactylClient.ConsoleSession consoleSession;
     private PterodactylClient.PowerState currentState = PterodactylClient.PowerState.UNKNOWN;
     private boolean currentSuspended;
-    private boolean connecting, refreshing, consoleConnecting, viewBuilt;
+    private boolean connecting, refreshing, consoleConnecting, fleetHistoryRefreshing, viewBuilt;
+    private volatile List<String> activePlayerNames = List.of();
+    private volatile long lastPlayerListRequest;
 
     public PterodactylPane(PanelConfig config, HostServices hostServices) {
         this.config = Objects.requireNonNull(config); this.hostServices = Objects.requireNonNull(hostServices);
         refresh.setCycleCount(Animation.INDEFINITE);
+        fleetHistoryRefresh.setCycleCount(Animation.INDEFINITE);
         liveUiRefresh.setCycleCount(Animation.INDEFINITE); liveUiRefresh.play();
     }
 
@@ -121,7 +130,7 @@ public final class PterodactylPane {
         updateVaultState();
     }
 
-    public void shutdown() { refresh.stop(); liveUiRefresh.stop(); closeConsole(); pendingStats.set(null); pendingState.set(null); apiExecutor.shutdownNow(); client = null; active = null; }
+    public void shutdown() { refresh.stop(); fleetHistoryRefresh.stop(); liveUiRefresh.stop(); closeConsole(); pendingStats.set(null); pendingState.set(null); apiExecutor.shutdownNow(); client = null; active = null; }
 
     private void connectEntered() {
         String key = apiKey.getText(); if (key == null || key.isBlank()) { showError("Pterodactyl Client API anahtarı gerekli."); return; }
@@ -155,15 +164,16 @@ public final class PterodactylPane {
             try { config.save(); } catch (IOException error) { log.append("[AeroMC] Panel adresi kaydedilemedi: " + error.getMessage()); }
             servers.getItems().setAll(result.servers()); setConnecting(false, result.servers().isEmpty() ? "Bağlandı • erişilebilir sunucu yok" : result.servers().size() + " sunucu bulundu");
             log.append("[AeroMC] Pterodactyl Client API bağlantısı kuruldu."); updateVaultState();
-            if (!result.servers().isEmpty()) servers.getSelectionModel().selectFirst(); refresh.play();
+            if (!result.servers().isEmpty()) servers.getSelectionModel().selectFirst(); refresh.play(); refreshFleetHistory(); fleetHistoryRefresh.play();
         });
-        task.setOnFailed(event -> { closeConsole(); client = null; active = null; activeServerName.set("Pterodactyl sunucusu seçilmedi"); servers.getItems().clear(); setConnecting(false, "Bağlantı başarısız"); showError(rootMessage(task.getException())); });
+        task.setOnFailed(event -> { closeConsole(); fleetHistoryRefresh.stop(); client = null; active = null; activeServerName.set("Pterodactyl sunucusu seçilmedi"); servers.getItems().clear(); setConnecting(false, "Bağlantı başarısız"); showError(rootMessage(task.getException())); });
         run(task, "aeromc-pterodactyl-connect");
     }
 
     private void select(PterodactylClient.ServerInfo server) {
         closeConsole();
         active = server; currentState = PterodactylClient.PowerState.UNKNOWN; currentSuspended = server != null && server.suspended();
+        activePlayerNames = List.of(); lastPlayerListRequest = 0L;
         activeServerName.set(server == null ? "Pterodactyl sunucusu seçilmedi" : server.name());
         if (server == null) { resetMetrics(); return; }
         allocation.setText(server.allocation()); memory.setText(server.memoryLimitMb() > 0 ? "Limit " + server.memoryLimitMb() + " MB" : "Limitsiz");
@@ -182,7 +192,7 @@ public final class PterodactylPane {
             memory.setText(bytes(value.memoryBytes()) + limitSuffix(server.memoryLimitMb(), " MB"));
             disk.setText(bytes(value.diskBytes()) + limitSuffix(server.diskLimitMb(), " MB")); uptime.setText(duration(value.uptimeMillis())); updatePowerButtons();
             publishMetrics(value); publishSnapshot(value);
-            if (value.state() == PterodactylClient.PowerState.RUNNING && (consoleSession == null || !consoleSession.isOpen())) connectConsole();
+            if (value.state() == PterodactylClient.PowerState.RUNNING) { requestPlayerListIfDue(currentClient, server); if (consoleSession == null || !consoleSession.isOpen()) connectConsole(); }
             else if (value.state() == PterodactylClient.PowerState.OFFLINE) closeConsole();
         });
         task.setOnFailed(event -> { refreshing = false; refreshNow.setDisable(false); serverState.setText("Durum alınamadı"); updatePowerButtons(); log.append("[Hata] " + rootMessage(task.getException())); });
@@ -224,7 +234,7 @@ public final class PterodactylPane {
         consoleConnecting = true;
         Task<PterodactylClient.ConsoleSession> task = new Task<>() { @Override protected PterodactylClient.ConsoleSession call() throws Exception {
             return currentClient.openConsole(server.identifier(), new PterodactylClient.ConsoleListener() {
-                @Override public void onConsole(String line) { consoleListeners.forEach(listener -> listener.accept(line)); log.append(line); }
+                @Override public void onConsole(String line) { acceptPlayerList(line); consoleListeners.forEach(listener -> listener.accept(line)); log.append(line); }
                 @Override public void onStats(PterodactylClient.ConsoleStats stats) { if (active == server) pendingStats.set(stats); }
                 @Override public void onStatus(PterodactylClient.PowerState state) { if (active == server) pendingState.set(state); }
                 @Override public void onClosed(String reason) { Platform.runLater(() -> { if (active == server) { log.append("[AeroMC] Pterodactyl canlı bağlantısı kapandı: " + reason); consoleSession = null; } }); }
@@ -260,14 +270,47 @@ public final class PterodactylPane {
         CompletableFuture.runAsync(() -> {
             int online = 0, max = 0; try { if (resources.state() == PterodactylClient.PowerState.RUNNING && !"-".equals(server.allocation())) { MinecraftPing.Result ping = MinecraftPing.ping(server.allocation()); online = ping.online(); max = ping.max(); } } catch (Exception ignored) { }
             if (active != server) return;
-            ProSnapshot snapshot = new ProSnapshot(server.name(), stateText(resources.state()), resources.state() == PterodactylClient.PowerState.RUNNING, online, max, List.of(), server.memoryLimitMb(), server.allocation());
+            ProSnapshot snapshot = new ProSnapshot(server.name(), stateText(resources.state()), resources.state() == PterodactylClient.PowerState.RUNNING, online, max, activePlayerNames, server.memoryLimitMb(), server.allocation());
             snapshotListeners.forEach(listener -> listener.accept(snapshot));
         }, apiExecutor);
+    }
+
+    private void requestPlayerListIfDue(PterodactylClient currentClient, PterodactylClient.ServerInfo server) {
+        long now = System.currentTimeMillis(); if (now - lastPlayerListRequest < 30_000L) return; lastPlayerListRequest = now;
+        CompletableFuture.runAsync(() -> { try { currentClient.command(server.identifier(), "list"); } catch (Exception error) { log.append("[AeroMC] Oyuncu listesi alınamadı: " + rootMessage(error)); } }, apiExecutor);
+    }
+    private void acceptPlayerList(String line) {
+        Matcher match = PLAYER_LIST.matcher(line == null ? "" : line); if (!match.find()) return;
+        String names = match.group(1).trim(); activePlayerNames = names.isEmpty() ? List.of() : Arrays.stream(names.split(",\\s*")).filter(name -> !name.isBlank()).map(String::trim).toList();
+    }
+
+    /** Records one conservative status sample per accessible Pterodactyl server once a minute. */
+    private void refreshFleetHistory() {
+        PterodactylClient currentClient = client; List<PterodactylClient.ServerInfo> known = List.copyOf(servers.getItems());
+        if (currentClient == null || known.isEmpty() || fleetHistoryRefreshing) return;
+        fleetHistoryRefreshing = true;
+        Task<List<FleetHealthHistory.ServerState>> task = new Task<>() {
+            @Override protected List<FleetHealthHistory.ServerState> call() {
+                List<FleetHealthHistory.ServerState> states = new ArrayList<>();
+                for (PterodactylClient.ServerInfo server : known) {
+                    try {
+                        PterodactylClient.Resources resources = currentClient.resources(server.identifier());
+                        int ramGiB = server.memoryLimitMb() <= 0 ? 0 : Math.max(1, (server.memoryLimitMb() + 1023) / 1024);
+                        states.add(new FleetHealthHistory.ServerState(server.name(), resources.state() == PterodactylClient.PowerState.RUNNING, false, 0, ramGiB));
+                    } catch (Exception ignored) { /* An unavailable API response must not be recorded as an offline server. */ }
+                }
+                return states;
+            }
+        };
+        task.setOnSucceeded(event -> { fleetHistoryRefreshing = false; fleetHealthHistory.recordStates(Instant.now(), task.getValue()); });
+        task.setOnFailed(event -> fleetHistoryRefreshing = false);
+        run(task, "aeromc-pterodactyl-fleet-history");
     }
 
     private void closeConsole() { PterodactylClient.ConsoleSession value = consoleSession; consoleSession = null; if (value != null) value.close(); }
 
     public boolean hasActiveServer() { return client != null && active != null; }
+    List<FleetHealthHistory.Sample> fleetHealthSince(Instant cutoff) { return fleetHealthHistory.since(cutoff); }
     public String getActiveServerName() { return activeServerName.get(); }
     public ReadOnlyStringProperty activeServerNameProperty() { return activeServerName.getReadOnlyProperty(); }
     public void addConsoleListener(Consumer<String> listener) { consoleListeners.add(listener); }
@@ -281,7 +324,7 @@ public final class PterodactylPane {
     public CompletableFuture<Void> startActiveServer() { return powerAsync(PterodactylClient.PowerSignal.START); }
     public CompletableFuture<Void> stopActiveServer() { return powerAsync(PterodactylClient.PowerSignal.STOP); }
     public CompletableFuture<Void> restartActiveServer() { return powerAsync(PterodactylClient.PowerSignal.RESTART); }
-    public CompletableFuture<ProSnapshot> fetchProSnapshot() { return withActive((value, server) -> { PterodactylClient.Resources resources = value.resources(server.identifier()); int online = 0, max = 0; try { if (resources.state() == PterodactylClient.PowerState.RUNNING) { MinecraftPing.Result ping = MinecraftPing.ping(server.allocation()); online = ping.online(); max = ping.max(); } } catch (Exception ignored) { } return new ProSnapshot(server.name(), stateText(resources.state()), resources.state() == PterodactylClient.PowerState.RUNNING, online, max, List.of(), server.memoryLimitMb(), server.allocation()); }); }
+    public CompletableFuture<ProSnapshot> fetchProSnapshot() { return withActive((value, server) -> { PterodactylClient.Resources resources = value.resources(server.identifier()); int online = 0, max = 0; try { if (resources.state() == PterodactylClient.PowerState.RUNNING) { MinecraftPing.Result ping = MinecraftPing.ping(server.allocation()); online = ping.online(); max = ping.max(); } } catch (Exception ignored) { } return new ProSnapshot(server.name(), stateText(resources.state()), resources.state() == PterodactylClient.PowerState.RUNNING, online, max, activePlayerNames, server.memoryLimitMb(), server.allocation()); }); }
     public CompletableFuture<Map<String, Object>> loadServerOptions() { return withActive((value, server) -> propertiesMap(value.readFile(server.identifier(), "/server.properties"))); }
     public CompletableFuture<Void> saveServerOptions(Map<String, Object> changes) { return withActive((value, server) -> { String source = value.readFile(server.identifier(), "/server.properties"); Properties properties = new Properties(); properties.load(new StringReader(source)); changes.forEach((key, item) -> properties.setProperty(key, Objects.toString(item, ""))); StringWriter output = new StringWriter(); properties.store(output, "AeroMC Pterodactyl settings"); value.writeFile(server.identifier(), "/server.properties", output.toString()); return null; }); }
     public CompletableFuture<String> readRemoteFile(String path) { return withActive((value, server) -> value.readFile(server.identifier(), path)); }

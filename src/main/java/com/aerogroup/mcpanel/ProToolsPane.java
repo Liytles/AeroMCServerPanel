@@ -196,7 +196,13 @@ public final class ProToolsPane {
 
     private WeeklyReportPane.Snapshot weeklyReportSnapshot() {
         Instant cutoff = Instant.now().minus(java.time.Duration.ofDays(7));
-        return new WeeklyReportPane.Snapshot(isRemote(), config.getMemoryMb(), thresholdAdvisor.samplesSince(cutoff), new FleetHealthHistory().since(cutoff), crisisHistory.entries(), diagnosticHistory.since(cutoff), playerInsightsPane.weeklyInputs());
+        WeeklyReportPane.Provider reportProvider = isPterodactyl() ? WeeklyReportPane.Provider.PTERODACTYL : isExaroton() ? WeeklyReportPane.Provider.EXAROTON : WeeklyReportPane.Provider.LOCAL;
+        String sourcePrefix = reportProvider == WeeklyReportPane.Provider.PTERODACTYL ? NotificationCenter.serverSource("Pterodactyl", "") : reportProvider == WeeklyReportPane.Provider.EXAROTON ? NotificationCenter.serverSource("Exaroton", "") : NotificationCenter.serverSource("Yerel JAR", "");
+        List<SmartThresholdAdvisor.Sample> performance = thresholdAdvisor.samplesSince(cutoff).stream().filter(value -> value.source().startsWith(sourcePrefix)).toList();
+        List<CrisisHistory.Entry> crises = crisisHistory.entries().stream().filter(value -> value.source().startsWith(sourcePrefix)).toList();
+        List<DiagnosticHistory.Entry> diagnostics = diagnosticHistory.since(cutoff).stream().filter(value -> value.source().startsWith(sourcePrefix)).toList();
+        List<FleetHealthHistory.Sample> fleet = reportProvider == WeeklyReportPane.Provider.PTERODACTYL ? pterodactyl.fleetHealthSince(cutoff) : reportProvider == WeeklyReportPane.Provider.EXAROTON ? exaroton.fleetHealthSince(cutoff) : List.of();
+        return new WeeklyReportPane.Snapshot(reportProvider, config.getMemoryMb(), performance, fleet, crises, diagnostics, playerInsightsPane.weeklyInputs());
     }
 
     private Node automationView() {
@@ -395,7 +401,7 @@ public final class ProToolsPane {
         pterodactylSnapshot = snapshot; if (!isPterodactyl()) return; serverOnline = snapshot.online();
         providerState.setText(snapshot.name() + " • " + snapshot.status()); playerValue.setText(snapshot.players() + " / " + snapshot.maxPlayers()); uptimeValue.setText(snapshot.status());
         if (!snapshot.online()) { cpuValue.setText("-"); memoryValue.setText(snapshot.memoryLimitMb() > 0 ? snapshot.memoryLimitMb() + " MB ayrılmış" : "-"); sparkPane.serverStopped("Pterodactyl sunucusu kapandı • Lag analizi beklemesi durduruldu"); }
-        if (!snapshot.playerNames().isEmpty()) acceptPlayers(snapshot.playerNames());
+        if (!snapshot.playerNames().isEmpty() || snapshot.players() == 0) acceptPlayers(snapshot.playerNames());
         if (snapshot.online() && sampleIndex % 5 == 0) probeLatency(snapshot.address()); updateHealthAndCrisis();
     }
 

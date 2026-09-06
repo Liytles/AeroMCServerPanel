@@ -20,6 +20,7 @@ public final class PanelConfig {
     private boolean inGameCommandsEnabled;
     private boolean automaticUpdateCheckEnabled = true;
     private boolean featureTourCompleted;
+    private boolean askMasterPasswordOnLaunch;
     private String updateChannel = "stable";
     private String pterodactylPanelUrl = "";
     private String serverProfile = "friends";
@@ -49,6 +50,7 @@ public final class PanelConfig {
             config.inGameCommandsEnabled = Boolean.parseBoolean(values.getProperty("inGameCommandsEnabled", "false"));
             config.automaticUpdateCheckEnabled = Boolean.parseBoolean(values.getProperty("automaticUpdateCheckEnabled", "true"));
             config.featureTourCompleted = Boolean.parseBoolean(values.getProperty("featureTourCompleted", "false"));
+            config.askMasterPasswordOnLaunch = Boolean.parseBoolean(values.getProperty("askMasterPasswordOnLaunch", "false"));
             config.updateChannel = "beta".equalsIgnoreCase(values.getProperty("updateChannel", "stable")) ? "beta" : "stable";
             config.pterodactylPanelUrl = values.getProperty("pterodactylPanelUrl", "").trim();
             config.serverProfile = values.getProperty("serverProfile", "friends").trim();
@@ -76,6 +78,7 @@ public final class PanelConfig {
         values.setProperty("inGameCommandsEnabled", Boolean.toString(inGameCommandsEnabled));
         values.setProperty("automaticUpdateCheckEnabled", Boolean.toString(automaticUpdateCheckEnabled));
         values.setProperty("featureTourCompleted", Boolean.toString(featureTourCompleted));
+        values.setProperty("askMasterPasswordOnLaunch", Boolean.toString(askMasterPasswordOnLaunch));
         values.setProperty("updateChannel", updateChannel);
         values.setProperty("pterodactylPanelUrl", pterodactylPanelUrl);
         values.setProperty("serverProfile", serverProfile);
@@ -112,6 +115,8 @@ public final class PanelConfig {
     public void setAutomaticUpdateCheckEnabled(boolean value) { automaticUpdateCheckEnabled = value; }
     public boolean isFeatureTourCompleted() { return featureTourCompleted; }
     public void setFeatureTourCompleted(boolean value) { featureTourCompleted = value; }
+    public boolean isAskMasterPasswordOnLaunch() { return askMasterPasswordOnLaunch; }
+    public void setAskMasterPasswordOnLaunch(boolean value) { askMasterPasswordOnLaunch = value; }
     public String getUpdateChannel() { return updateChannel; }
     public void setUpdateChannel(String value) { updateChannel = "beta".equalsIgnoreCase(value) ? "beta" : "stable"; }
     public String getPterodactylPanelUrl() { return pterodactylPanelUrl; }

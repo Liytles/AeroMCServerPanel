@@ -2,6 +2,7 @@ package com.aerogroup.mcpanel;
 
 import com.aerogroup.mcpanel.aeroguard.DeviceCredentialStore;
 import com.aerogroup.mcpanel.aeroguard.SecurityAuditEngine;
+import com.aerogroup.mcpanel.aeroguard.MasterPasswordManager;
 
 import javafx.geometry.Insets;
 import javafx.application.HostServices;
@@ -16,6 +17,7 @@ import javafx.geometry.Pos;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.function.Consumer;
 
 /** Uygulama genelindeki dil, görünüm ve performans tercihlerini tek yerde toplar. */
@@ -50,6 +52,33 @@ public final class SettingsPane {
         CheckBox liveMap = new CheckBox("Canlı Harita özelliğini etkinleştir"); liveMap.setSelected(config.isLiveMapEnabled());
         Label mapNote = note("Kapatıldığında Canlı Harita sekmesiyle birlikte konum sorguları, çizim zamanlayıcısı ve Exaroton harita dinleyicileri tamamen durdurulur. Değişiklik anında uygulanır.");
         liveMap.setOnAction(event -> { boolean previous = !liveMap.isSelected(); config.setLiveMapEnabled(liveMap.isSelected()); try { config.save(); liveMapToggle.accept(liveMap.isSelected()); } catch (IOException error) { liveMap.setSelected(previous); config.setLiveMapEnabled(previous); showError(error.getMessage()); } });
+
+        CheckBox askMasterPassword = new CheckBox("AeroMC her açıldığında ana parola sor"); askMasterPassword.setSelected(config.isAskMasterPasswordOnLaunch());
+        Label masterPasswordState = note(MasterPasswordManager.isConfigured() ? "Ana parola hazır. Parola yalnızca doğrulama özeti olarak saklanır; geri getirilemez." : "Ana parola henüz oluşturulmadı; sonraki açılışta oluşturman istenir.");
+        Label masterPasswordNote = note("Ayar aktarımı ve içe aktarma işlemleri ana parola doğrulaması ister. Yeni bilgisayarda aktarımı açabilmek için ilk açılışta aynı ana parolayı oluştur.");
+        askMasterPassword.setOnAction(event -> {
+            boolean enabled = askMasterPassword.isSelected(), previous = !enabled; config.setAskMasterPasswordOnLaunch(enabled);
+            try { config.save(); } catch (IOException error) { askMasterPassword.setSelected(previous); config.setAskMasterPasswordOnLaunch(previous); showError(error.getMessage()); }
+        });
+
+        Button exportSettings = button("Ayarları Dışa Aktar", "primary"); Button importSettings = button("Ayarları İçe Aktar", "secondary");
+        Label transferNote = note("Ayarlar AES-256-GCM ile şifrelenmiş .aeromc-settings dosyası olarak taşınır. Sunucu dünyaları, günlükler, ana parola doğrulaması ve cihaza bağlı otomatik kasalar güvenlik nedeniyle aktarılmaz.");
+        exportSettings.setOnAction(event -> {
+            FileChooser chooser = new FileChooser(); chooser.setTitle("AeroMC ayarlarını dışa aktar"); chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("AeroMC ayar dosyası", "*.aeromc-settings")); chooser.setInitialFileName("aeromc-settings.aeromc-settings");
+            File target = chooser.showSaveDialog(exportSettings.getScene().getWindow()); if (target == null) return;
+            MasterPasswordDialogs.verifiedPassword(exportSettings.getScene().getWindow(), "Ayarları Dışa Aktar", "Ayar yedeğini şifrelemek için AeroMC ana parolanı doğrula.").ifPresent(password -> {
+                try { AeroMCSettingsTransfer.exportTo(target.toPath(), password); NotificationCenter.shared().publish(NotificationCenter.Severity.SUCCESS, "Ayarlar", "AeroMC ayarları dışa aktarıldı", target.getName()); showInfo("Ayarlar şifreli olarak dışa aktarıldı."); }
+                catch (Exception error) { showError(error.getMessage()); } finally { Arrays.fill(password, '\0'); }
+            });
+        });
+        importSettings.setOnAction(event -> {
+            FileChooser chooser = new FileChooser(); chooser.setTitle("AeroMC ayarlarını içe aktar"); chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("AeroMC ayar dosyası", "*.aeromc-settings"));
+            File source = chooser.showOpenDialog(importSettings.getScene().getWindow()); if (source == null) return;
+            MasterPasswordDialogs.verifiedPassword(importSettings.getScene().getWindow(), "Ayarları İçe Aktar", "Aktarım dosyasını açmak için AeroMC ana parolanı doğrula.").ifPresent(password -> {
+                try { int files = AeroMCSettingsTransfer.importFrom(source.toPath(), password); NotificationCenter.shared().publish(NotificationCenter.Severity.SUCCESS, "Ayarlar", "AeroMC ayarları içe aktarıldı", files + " ayar dosyası geri yüklendi."); showInfo(files + " ayar dosyası içe aktarıldı. Değişikliklerin tamamı için AeroMC'yi yeniden başlat."); }
+                catch (Exception error) { showError(error.getMessage()); } finally { Arrays.fill(password, '\0'); }
+            });
+        });
 
         CheckBox automaticVault = new CheckBox("Exaroton, Pterodactyl ve Discord kimlik bilgilerini bu cihazda otomatik aç");
         automaticVault.setSelected(config.isAutomaticCredentialVaultEnabled());
@@ -121,6 +150,8 @@ public final class SettingsPane {
                 securityCard,
                 updateCenter.buildView(),
                 card("MINECRAFT JAVA YÖNETİMİ", javaState, javaControls, javaNote),
+                card("AEROMC ANA PAROLASI", askMasterPassword, masterPasswordState, masterPasswordNote),
+                card("GÜVENLİ AYAR AKTARIMI", new FlowPane(9, 9, exportSettings, importSettings), transferNote),
                 card("GÜVENLİ KİMLİK BİLGİLERİ", automaticVault, vaultState, vaultNote),
                 card("EXAROTON BAŞLATMA", exarotonReadiness, readinessNote),
                 card("OYUN İÇİ AEROMC KOMUTLARI", inGameCommands, inGameNote),
@@ -171,4 +202,5 @@ public final class SettingsPane {
     }
     private void applySecurityReport(SecurityAuditEngine.Report report, Label score, Label state, ListView<SecurityAuditEngine.Finding> findings) { score.setText(report.score() + " / 100"); state.setText(report.state()); findings.getItems().setAll(report.findings()); }
     private void showError(String text) { Alert alert = new Alert(Alert.AlertType.ERROR, LanguageManager.text(text == null ? "Bilinmeyen hata" : text), ButtonType.OK); alert.setHeaderText(LanguageManager.text("İşlem tamamlanamadı")); alert.showAndWait(); }
+    private void showInfo(String text) { Alert alert = new Alert(Alert.AlertType.INFORMATION, LanguageManager.text(text), ButtonType.OK); alert.setHeaderText(LanguageManager.text("AeroMC ayarları")); alert.showAndWait(); }
 }

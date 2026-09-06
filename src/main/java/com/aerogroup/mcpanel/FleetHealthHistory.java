@@ -6,7 +6,7 @@ import java.nio.file.*;
 import java.time.*;
 import java.util.*;
 
-/** Exaroton filosunu seyrek örnekleyerek haftalık karşılaştırma verisi üretir. */
+/** Sağlayıcıdan bağımsız filo durumlarını seyrek örnekleyerek haftalık karşılaştırma verisi üretir. */
 final class FleetHealthHistory {
     private static final Duration RETENTION = Duration.ofDays(14), INTERVAL = Duration.ofMinutes(5);
     private static final int LIMIT = 20_000;
@@ -17,11 +17,19 @@ final class FleetHealthHistory {
         this(Path.of(System.getProperty("user.home"), ".aeromc-panel", "fleet-health-history.log"));
     }
 
+    static FleetHealthHistory forPterodactyl() {
+        return new FleetHealthHistory(Path.of(System.getProperty("user.home"), ".aeromc-panel", "pterodactyl-fleet-health-history.log"));
+    }
+
     FleetHealthHistory(Path file) { this.file = file; load(); }
 
     synchronized void record(Instant now, List<ExarotonFleetEngine.ServerState> states) {
+        recordStates(now, states.stream().map(state -> new ServerState(state.name(), state.online(), state.crashed(), state.players(), state.ramGiB())).toList());
+    }
+
+    synchronized void recordStates(Instant now, List<ServerState> states) {
         boolean changed = false;
-        for (ExarotonFleetEngine.ServerState state : states) {
+        for (ServerState state : states) {
             Sample previous = latest(state.name());
             Sample next = new Sample(now, clean(state.name()), state.online(), state.crashed(), Math.max(0, state.players()), state.ramGiB());
             boolean stateChanged = previous == null || previous.online() != next.online() || previous.crashed() != next.crashed()
@@ -73,4 +81,5 @@ final class FleetHealthHistory {
     private static String clean(String value) { return Objects.toString(value, "Bilinmeyen").replace('\n', ' ').replace('\r', ' ').strip(); }
 
     record Sample(Instant time, String server, boolean online, boolean crashed, int players, int ramGiB) { }
+    record ServerState(String name, boolean online, boolean crashed, int players, int ramGiB) { }
 }

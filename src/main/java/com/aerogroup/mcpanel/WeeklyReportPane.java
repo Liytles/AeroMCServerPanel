@@ -12,7 +12,9 @@ import java.util.function.Supplier;
 
 /** Haftalık raporun veri bağlama, biçimlendirme ve JavaFX görünümünü ProToolsPane'den ayırır. */
 final class WeeklyReportPane {
-    record Snapshot(boolean remote, int localMemoryMb, List<SmartThresholdAdvisor.Sample> performance,
+    enum Provider { LOCAL, EXAROTON, PTERODACTYL }
+
+    record Snapshot(Provider provider, int localMemoryMb, List<SmartThresholdAdvisor.Sample> performance,
                     List<FleetHealthHistory.Sample> fleet, List<CrisisHistory.Entry> crises,
                     List<DiagnosticHistory.Entry> diagnostics, List<WeeklyReportEngine.PlayerInput> players) {
         Snapshot {
@@ -39,13 +41,17 @@ final class WeeklyReportPane {
 
     void refresh() {
         Snapshot data = source.get(); Instant now = Instant.now(); boolean english = LanguageManager.isEnglish(); WeeklyReportEngine.Report report;
-        if (data.remote()) {
-            ramTitle.setText(english ? "RAM & CREDIT SAVINGS" : "RAM & KREDİ TASARRUFU"); healthTitle.setText(english ? "FLEET HEALTH COMPARISON" : "FİLO SAĞLIK KARŞILAŞTIRMASI");
-            ramNote.setText(english ? "Exaroton savings use the official 1 credit / GiB RAM / hour rate, upper 10% RAM band and 20% headroom. Lowering RAM also lowers CPU share; verify under peak load." : "Exaroton tasarrufu resmî 1 kredi / GiB RAM / saat tarifesiyle; RAM üst %10 değeri ve %20 güvenli pay kullanılarak hesaplanır. RAM'i azaltmak CPU payını da düşürür: öneriyi önce yoğun saatte doğrula.");
+        if (data.provider() != Provider.LOCAL) {
+            boolean exaroton = data.provider() == Provider.EXAROTON;
+            ramTitle.setText(exaroton ? (english ? "RAM & CREDIT SAVINGS" : "RAM & KREDİ TASARRUFU") : (english ? "PTERODACTYL RAM & RESOURCE USAGE" : "PTERODACTYL RAM & KAYNAK KULLANIMI"));
+            healthTitle.setText(exaroton ? (english ? "FLEET HEALTH COMPARISON" : "FİLO SAĞLIK KARŞILAŞTIRMASI") : (english ? "PTERODACTYL FLEET HEALTH" : "PTERODACTYL FİLO SAĞLIĞI"));
+            ramNote.setText(exaroton
+                    ? (english ? "Exaroton savings use the official 1 credit / GiB RAM / hour rate, upper 10% RAM band and 20% headroom. Lowering RAM also lowers CPU share; verify under peak load." : "Exaroton tasarrufu resmî 1 kredi / GiB RAM / saat tarifesiyle; RAM üst %10 değeri ve %20 güvenli pay kullanılarak hesaplanır. RAM'i azaltmak CPU payını da düşürür: öneriyi önce yoğun saatte doğrula.")
+                    : (english ? "Only Pterodactyl Client API observations are used. RAM limits are never changed automatically; this view does not calculate Exaroton credits." : "Yalnızca Pterodactyl Client API gözlemleri kullanılır. RAM limiti asla otomatik değiştirilmez; bu görünüm Exaroton kredisi hesaplamaz."));
             report = WeeklyReportEngine.generate(now, data.performance(), data.fleet(), data.crises(), data.diagnostics(), data.players());
-            if (report.ramSuggestions().isEmpty()) ramRows.setAll(english ? "No Exaroton fleet/RAM data yet. Connect the account and leave AeroMC open while the server runs." : "Henüz Exaroton filo/RAM verisi yok. Hesabı bağla ve sunucu çalışırken AeroMC'yi açık bırak.");
-            else ramRows.setAll(report.ramSuggestions().stream().map(value -> formatRamSuggestion(value, english)).toList());
-            if (report.fleet().isEmpty()) healthRows.setAll(english ? "Fleet comparison needs Exaroton observations." : "Filo karşılaştırması için Exaroton gözlemi gerekiyor.");
+            if (report.ramSuggestions().isEmpty()) ramRows.setAll(exaroton ? (english ? "No Exaroton fleet/RAM data yet. Connect the account and leave AeroMC open while the server runs." : "Henüz Exaroton filo/RAM verisi yok. Hesabı bağla ve sunucu çalışırken AeroMC'yi açık bırak.") : (english ? "No Pterodactyl resource data yet. Connect the panel and leave AeroMC open while its servers are observed." : "Henüz Pterodactyl kaynak verisi yok. Paneli bağla ve sunucular gözlemlenirken AeroMC'yi açık bırak."));
+            else ramRows.setAll(report.ramSuggestions().stream().map(value -> exaroton ? formatRamSuggestion(value, english) : formatPterodactylRamSuggestion(value, english)).toList());
+            if (report.fleet().isEmpty()) healthRows.setAll(exaroton ? (english ? "Fleet comparison needs Exaroton observations." : "Filo karşılaştırması için Exaroton gözlemi gerekiyor.") : (english ? "Fleet comparison needs Pterodactyl observations." : "Filo karşılaştırması için Pterodactyl gözlemi gerekiyor."));
             else { List<String> rows = new ArrayList<>(); boolean stableMarked = false; for (WeeklyReportEngine.FleetScore value : report.fleet()) { boolean mostStable = value.ready() && !stableMarked; rows.add(formatFleet(value, mostStable, english)); if (mostStable) stableMarked = true; } healthRows.setAll(rows); }
         } else {
             String localSource = NotificationCenter.serverSource("Yerel JAR", "");
@@ -89,6 +95,13 @@ final class WeeklyReportPane {
         String usage = String.format(Locale.US, english ? "average %.1f%% • peak band %.1f%%" : "ortalama %%%.1f • üst kullanım bandı %%%.1f", value.averagePercent(), value.p90Percent());
         if (value.suggestedGiB() >= value.allocatedGiB()) return value.server() + " • " + usage + " • " + (english ? "No safe RAM reduction suggested." : "Güvenli bir RAM azaltımı önerilmiyor.");
         return value.server() + " • " + usage + " • " + value.allocatedGiB() + " → " + value.suggestedGiB() + " GiB • " + String.format(Locale.US, english ? "about %.2f credits saved over %.1f observed online hours" : "gözlenen %.1f online saatte yaklaşık %.2f kredi tasarrufu", value.observedOnlineHours(), value.weeklySavings());
+    }
+
+    private String formatPterodactylRamSuggestion(WeeklyReportEngine.RamSuggestion value, boolean english) {
+        if (!value.ready()) return english ? value.server() + " • Collecting RAM data (" + value.samples() + "/20 samples, limit " + (value.allocatedGiB() > 0 ? value.allocatedGiB() + " GiB" : "unknown") + ")." : value.server() + " • RAM verisi toplanıyor (" + value.samples() + "/20 örnek, limit " + (value.allocatedGiB() > 0 ? value.allocatedGiB() + " GiB" : "bilinmiyor") + ").";
+        String usage = String.format(Locale.US, english ? "average %.1f%% • peak band %.1f%%" : "ortalama %%%.1f • üst kullanım bandı %%%.1f", value.averagePercent(), value.p90Percent());
+        if (value.suggestedGiB() >= value.allocatedGiB()) return value.server() + " • " + usage + " • " + (english ? "No lower safe RAM limit is suggested." : "Daha düşük güvenli RAM limiti önerilmiyor.");
+        return value.server() + " • " + usage + " • " + value.allocatedGiB() + " → " + value.suggestedGiB() + " GiB • " + (english ? "may be tested during peak hours; AeroMC will not change the panel limit." : "yoğun saatte denenebilir; AeroMC panel limitini değiştirmez.");
     }
 
     private String formatError(WeeklyReportEngine.ErrorRank value, boolean english) {

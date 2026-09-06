@@ -301,6 +301,7 @@ public final class ExarotonPane {
         var info = server.getPlayerInfo(); boolean online = server.hasStatus(ServerStatus.ONLINE), crashed = server.hasStatus(ServerStatus.CRASHED);
         return new FleetSnapshot(server, new ExarotonFleetEngine.ServerState(server.getName(), server.getStatus().getName(), online, crashed, info.getCount(), info.getMax(), allocatedRam), server.getAddress());
     }
+    List<FleetHealthHistory.Sample> fleetHealthSince(Instant cutoff) { return fleetHealthHistory.since(cutoff); }
     private void renderFleet() {
         List<ExarotonFleetEngine.ServerState> states = currentFleet.stream().map(FleetSnapshot::state).toList(); ExarotonFleetEngine.Summary summary = ExarotonFleetEngine.summarize(states);
         fleetSummary.setText(summary.onlineServers() + " / " + summary.totalServers() + " online  •  " + summary.totalPlayers() + " oyuncu  •  " + summary.activeRamGiB() + " GiB aktif  •  " + String.format(Locale.US, "%.2f kredi/saat", summary.creditsPerHour()) + (summary.crashedServers() > 0 ? "  •  " + summary.crashedServers() + " çöktü" : ""));
