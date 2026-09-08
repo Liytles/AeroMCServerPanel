@@ -7,9 +7,9 @@ permissions:
   contents: write
 
 env:
-  VERSION: 5.0.0
-  SOURCE_ARCHIVE: AeroMC-5.0.0-source.zip
-  SOURCE_SHA256: 224501de51f08aac705aa941c66ec8f8649df376e543419c789764ad9e48bbde
+  VERSION: 5.0.1
+  SOURCE_ARCHIVE: AeroMC-5.0.1-source.zip
+  SOURCE_SHA256: 542fc0996eb758a9a6080f45823a5030eb39882297c045014f573208cc3440f2
 
 jobs:
   windows:
