@@ -38,7 +38,7 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload -R "Liytles/AeroMCServerPanel" "v${env:VERSION}" source/release/windows/*.exe source/release/windows/*.sha256 source/release/windows/SHA256SUMS.txt --clobber
+        run: gh release upload -R "Liytles/AeroMCServerPanel" "v${env:VERSION}" source/release/windows/*.exe source/release/windows/*.sha256 --clobber
 
   macos:
     name: macOS installer (.dmg)
@@ -68,4 +68,34 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload -R "Liytles/AeroMCServerPanel" "v${VERSION}" source/release/macos/*.dmg source/release/macos/*.sha256 source/release/macos/SHA256SUMS.txt --clobber
+        run: gh release upload -R "Liytles/AeroMCServerPanel" "v${VERSION}" source/release/macos/*.dmg source/release/macos/*.sha256 --clobber
+
+  linux:
+    name: Linux installer (.deb)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Download the V5 source snapshot
+        shell: bash
+        run: |
+          curl --fail --location --silent --show-error \
+            "https://github.com/Liytles/AeroMCServerPanel/releases/download/v${VERSION}/${SOURCE_ARCHIVE}" \
+            --output source.zip
+          echo "${SOURCE_SHA256}  source.zip" | sha256sum -c -
+          unzip -q source.zip -d source
+
+      - name: Build installer
+        shell: bash
+        working-directory: source
+        run: ./scripts/package-linux.sh
+
+      - name: Attach installer to V5 release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload -R "Liytles/AeroMCServerPanel" "v${VERSION}" source/release/linux/*.deb source/release/linux/*.sha256 --clobber
