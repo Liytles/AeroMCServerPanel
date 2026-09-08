@@ -38,7 +38,7 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "v${env:VERSION}" source/release/windows/*.exe source/release/windows/*.sha256 source/release/windows/SHA256SUMS.txt --clobber
+        run: gh release upload -R "Liytles/AeroMCServerPanel" "v${env:VERSION}" source/release/windows/*.exe source/release/windows/*.sha256 source/release/windows/SHA256SUMS.txt --clobber
 
   macos:
     name: macOS installer (.dmg)
@@ -68,4 +68,4 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "v${VERSION}" source/release/macos/*.dmg source/release/macos/*.sha256 source/release/macos/SHA256SUMS.txt --clobber
+        run: gh release upload -R "Liytles/AeroMCServerPanel" "v${VERSION}" source/release/macos/*.dmg source/release/macos/*.sha256 source/release/macos/SHA256SUMS.txt --clobber
