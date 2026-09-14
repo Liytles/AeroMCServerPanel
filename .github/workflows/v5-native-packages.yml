@@ -1,4 +1,4 @@
-name: Build V5 native installers
+name: Build 5.1 beta native installers
 
 on:
   workflow_dispatch:
@@ -7,9 +7,9 @@ permissions:
   contents: write
 
 env:
-  VERSION: 5.0.1
-  SOURCE_ARCHIVE: AeroMC-5.0.1-source.zip
-  SOURCE_SHA256: 542fc0996eb758a9a6080f45823a5030eb39882297c045014f573208cc3440f2
+  VERSION: 5.1.0-beta
+  SOURCE_ARCHIVE: AeroMC-5.1.0-beta-source.zip
+  SOURCE_SHA256: 798a877d9b0d6fb0e989eb7f706f9d9011cb1115cc25dad17a206318eb17d900
 
 jobs:
   windows:
@@ -17,24 +17,27 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
-
-      - name: Download the V5 source snapshot
+      - name: Ensure WiX Toolset 3
+        shell: pwsh
+        run: |
+          if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue)) {
+            choco install wixtoolset --version=3.14.1 -y
+          }
+      - name: Download verified beta source snapshot
         shell: pwsh
         run: |
           Invoke-WebRequest -Uri "https://github.com/Liytles/AeroMCServerPanel/releases/download/v${env:VERSION}/${env:SOURCE_ARCHIVE}" -OutFile source.zip
           if ((Get-FileHash source.zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne "${env:SOURCE_SHA256}") { throw "Source archive checksum mismatch." }
           Expand-Archive source.zip -DestinationPath source
-
       - name: Build installer
         shell: pwsh
         working-directory: source
         run: ./scripts/package-windows.ps1
-
-      - name: Attach installer to V5 release
+      - name: Attach installer to beta release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -45,26 +48,21 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
-
-      - name: Download the V5 source snapshot
+      - name: Download verified beta source snapshot
         shell: bash
         run: |
-          curl --fail --location --silent --show-error \
-            "https://github.com/Liytles/AeroMCServerPanel/releases/download/v${VERSION}/${SOURCE_ARCHIVE}" \
-            --output source.zip
+          curl --fail --location --silent --show-error "https://github.com/Liytles/AeroMCServerPanel/releases/download/v${VERSION}/${SOURCE_ARCHIVE}" --output source.zip
           echo "${SOURCE_SHA256}  source.zip" | shasum -a 256 -c -
           unzip -q source.zip -d source
-
       - name: Build installer
         shell: bash
         working-directory: source
         run: ./scripts/package-macos.sh
-
-      - name: Attach installer to V5 release
+      - name: Attach installer to beta release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -72,29 +70,26 @@ jobs:
 
   linux:
     name: Linux installer (.deb)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
-
-      - name: Download the V5 source snapshot
+      - name: Install Linux packaging tools
+        run: sudo apt-get update && sudo apt-get install -y fakeroot
+      - name: Download verified beta source snapshot
         shell: bash
         run: |
-          curl --fail --location --silent --show-error \
-            "https://github.com/Liytles/AeroMCServerPanel/releases/download/v${VERSION}/${SOURCE_ARCHIVE}" \
-            --output source.zip
+          curl --fail --location --silent --show-error "https://github.com/Liytles/AeroMCServerPanel/releases/download/v${VERSION}/${SOURCE_ARCHIVE}" --output source.zip
           echo "${SOURCE_SHA256}  source.zip" | sha256sum -c -
           unzip -q source.zip -d source
-
       - name: Build installer
         shell: bash
         working-directory: source
         run: ./scripts/package-linux.sh
-
-      - name: Attach installer to V5 release
+      - name: Attach installer to beta release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
