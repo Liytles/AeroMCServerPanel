@@ -2,7 +2,7 @@
 
 **Türkçe** · [English](README.en.md)
 
-> Kararlı sürüm: **4.0.0** · Güncel ön sürüm: **4.1.0-beta** · [4.1 beta sürüm notları](release-notes/v4.1.0-beta.md) · [V4 yol haritası](V4-ROADMAP.md)
+
 
 Minecraft sunucularını dört sağlayıcı modunda yöneten JavaFX masaüstü paneli:
 
@@ -185,6 +185,82 @@ mvn javafx:run
 
 Oyuncu ve sunucu seçenekleri için **Yönetim** sekmesini aç. Yerel işlemlerde sunucunun çalışıyor olması gerekir. Exaroton işlemlerinde önce **Sunucular → Exaroton** bölümünden hesabı bağlayıp yönetilecek sunucuyu seç. Sağlık, Kriz Modu, Çökme Doktoru ve Başarı Kartları **Kontrol Merkezi** içindedir.
 
+AeroGuard — AeroMC Güvenlik Katmanı
+
+**AeroGuard**, AeroMC’nin yerel dosyalarını, sunucu bağlantılarını, API anahtarlarını ve Uzaktan Erişim merkezini koruyan yerleşik güvenlik sistemidir. Tek bir ayardan ibaret değildir; uygulamanın farklı alanlarında çalışan katmanlı bir koruma mimarisidir.
+
+### Dosya ve yol güvenliği
+
+- **SafePathGuard**, AeroMC’nin yalnızca seçili sunucu klasörü içinde işlem yapmasını sağlar.
+- Klasör dışına çıkma (`../`) denemeleri ve simgesel bağlantı (symlink) üzerinden farklı bir konuma kaçışlar engellenir.
+- Sunucu JAR yolu, dünyalar, yedekler, eklentiler, modlar ve yapılandırma dosyaları işlem öncesinde doğrulanır.
+- Hassas dosyalarda güvenli izinler kullanılır; Linux’ta dosyalar mümkün olduğunda yalnızca uygulama sahibinin erişebileceği şekilde sınırlandırılır.
+- Güvenlik dosyaları atomik yazma yöntemiyle kaydedilir; yazım yarıda kesilirse dosyanın bozulma riski azaltılır.
+
+### Kimlik Kasası V2
+
+- Exaroton, Pterodactyl ve Discord webhook gibi gizli bilgiler cihazda şifreli olarak saklanabilir.
+- Kasa, kurulum başına üretilen ayrı bir 256-bit kök anahtar ve **AES-256-GCM** doğrulamalı şifreleme kullanır.
+- Kasa kaydı başka bir bilgisayara tek başına kopyalanırsa veya içeriği değiştirilirse doğrulama başarısız olur.
+- Ana parola doğrulaması güçlü anahtar türetme ile saklanır; parolanın kendisi kaydedilmez.
+- Gizli alanlarda kopyalama, kesme, sağ tık menüsü ve sürükleme gibi işlemler sınırlandırılır.
+- Ayar dışa aktarımları `.aeromc-settings` biçiminde AES-256-GCM ile şifrelenebilir. Dünyalar, günlükler, ana parola doğrulaması ve cihaz kasası güvenlik nedeniyle dışa aktarılmaz.
+
+### Güvenli Uzaktan Erişim
+
+- Uzaktan Erişim, şifrelenmemiş HTTP yerine TLS ile çalışan HTTPS bağlantısı kullanır.
+- AeroGuard V3, güvenli TLS 1.2/1.3 AEAD şifre paketleri, güvenli başlıklar, CSP nonce’ları ve CSRF koruması uygular.
+- Kullanıcı rolleri `VIEWER`, `MODERATOR` ve `ADMIN` olarak ayrılır; her rol yalnızca yetkili olduğu işlemleri yapabilir.
+- Giriş denemeleri, eşleştirme kodları ve uzaktan işlemler için hız sınırları uygulanır.
+- Geçersiz CSRF belirteçleri, yetkisiz işlemler, aşırı komut gönderimi ve şüpheli istekler engellenir.
+- Uzak panel yönlendirmeleri kabul edilmez; uzaktaki paneller için HTTPS zorunludur.
+- TLS sertifikası yerelde oluşturulur ve sertifika parmak izi kullanıcı tarafından doğrulanabilir.
+
+### AeroGuard V4.1 Gelişmiş Koruma
+
+Gelişmiş Koruma açıldığında AeroGuard V4.1 devreye girer. Bu mod küçük miktarda ek RAM kullanır ve ek olarak şunları sağlar:
+
+- Hassas AeroMC dosyalarında yaklaşık 20 saniyelik aralıklarla bütünlük denetimi.
+- Dosya izinlerinin düzenli olarak yeniden kontrol edilmesi.
+- TLS 1.3 tercihli daha sıkı uzaktan erişim yapılandırması.
+- Beş dakika geçerli, bellekte tutulan eşleştirme kodu.
+- Eşleştirme yapan istemcinin aynı ağ kaynağından devam etmesini kontrol etme.
+- Hassas bir dosya beklenmedik biçimde değiştirilirse uzak eşleştirmelerin otomatik iptali.
+- Şüpheli değişiklikler ve kritik güvenlik bulguları için AeroGuard Merkezi, güvenlik günlüğü ve isteğe bağlı bildirim entegrasyonu.
+
+### Güvenlik denetimi ve bütünlük takibi
+
+- AeroGuard; cihaz kasası, API anahtarları, TLS kimliği, uzaktan erişim kullanıcıları, ana parola doğrulaması ve diğer hassas dosyaların durumunu denetler.
+- Kritik bulgular, uyarılar ve başarılı kontroller güvenlik puanına yansıtılır.
+- Güvenilir AeroMC yazımları ile dışarıdan gelen beklenmedik değişiklikler birbirinden ayrılmaya çalışılır.
+- Güncelleme, dosya bütünlüğü, izinler ve çökme döngüsü gibi riskler Güvenlik Kalkanı üzerinden incelenebilir.
+
+### Saldırı algılama, bildirimler ve Olay İnceleyici
+
+AeroGuard aşağıdaki durumları algılayıp kaydedebilir:
+
+- Tekrarlanan hatalı giriş denemeleri
+- Geçersiz eşleştirme kodu denemeleri
+- Şüpheli veya aşırı büyük istekler
+- Geçersiz CSRF belirteçleri
+- Yetkisiz rol ile yapılan işlemler
+- Uzaktan işlem spam’i
+- Hassas dosyalarda beklenmedik bütünlük değişiklikleri
+- Yerel güvenlik taramasında bulunan kritik yapılandırma sorunları
+
+Olaylar:
+
+- Bildirim Merkezi ve masaüstü bildirimi olarak gösterilebilir.
+- Aynı olay türünü sürekli bildirim yağmuruna dönüştürmemek için hız sınırına sahiptir.
+- Olay İnceleyici’de kalıcı olarak saklanır; AeroMC yeniden açıldığında geçmiş korunur.
+- Aynı kaynak ve olay türü beş dakikalık zaman aralığında gruplanır.
+- Kaynaklar maskelenir; parola, API anahtarı, istek gövdesi, eşleştirme kodu ve tam IP adresi kaydedilmez.
+- Yanlış alarm olarak işaretlenebilir veya benzer uyarılar oturum boyunca susturulabilir.
+- Gizlilik odaklı, güvenli olay raporu olarak dışa aktarılabilir.
+- **Deneme Olayı Oluştur** düğmesi ile saldırı veya engelleme sayaçlarını değiştirmeden bildirim ve Olay İnceleyici akışı test edilebilir.
+
+> [!IMPORTANT]
+> AeroGuard güçlü bir yerel koruma katmanıdır; ancak aynı kullanıcı yetkileriyle çalışan zararlı yazılımlara, ele geçirilmiş işletim sistemlerine veya zayıf kullanıcı parolalarına karşı mutlak güvence vermez. Önemli sunucularda güçlü ana parola kullanın, yedek alın, TLS sertifika parmak izini doğrulayın ve Uzaktan Erişim’i yalnızca güvendiğiniz ağlarda açın.
 ## AeroMC 4.0 kararlı kurulum paketleri
 
 Yayın paketleri kendi Java çalışma ortamını içerir; uygulamayı kullanacak kişinin ayrıca Java veya Maven kurmasına gerek yoktur.
