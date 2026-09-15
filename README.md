@@ -185,7 +185,7 @@ mvn javafx:run
 
 Oyuncu ve sunucu seçenekleri için **Yönetim** sekmesini aç. Yerel işlemlerde sunucunun çalışıyor olması gerekir. Exaroton işlemlerinde önce **Sunucular → Exaroton** bölümünden hesabı bağlayıp yönetilecek sunucuyu seç. Sağlık, Kriz Modu, Çökme Doktoru ve Başarı Kartları **Kontrol Merkezi** içindedir.
 
-AeroGuard — AeroMC Güvenlik Katmanı
+### AeroGuard — AeroMC Güvenlik Katmanı
 
 **AeroGuard**, AeroMC’nin yerel dosyalarını, sunucu bağlantılarını, API anahtarlarını ve Uzaktan Erişim merkezini koruyan yerleşik güvenlik sistemidir. Tek bir ayardan ibaret değildir; uygulamanın farklı alanlarında çalışan katmanlı bir koruma mimarisidir.
 
